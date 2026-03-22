@@ -3,7 +3,7 @@ import Scene from '../../components/scene/Scene';
 import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
-import HookLifecycle from '../../components/interactive/ch07/HookLifecycle';
+import CodeSearch from '../../components/interactive/ch07/CodeSearch';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch07Scenes() {
@@ -12,118 +12,89 @@ export default function Ch07Scenes() {
 
 function Ch07Content() {
   const { t } = useLanguage();
-
   return (
     <SceneEngine>
       <Scene>
         <Narration>
-          <p>{t('你已经很能干了。', 'You\'ve become quite capable.')}</p>
-          <p>
-            {t(
-              '但有些事情，每次都要人来告诉你做——',
-              'But some things still require someone to tell you every time—'
-            )}
-          </p>
-          <p>
-            {t('"记得跑 lint"。', '"Remember to run lint".')}
-            <br />
-            {t('"别忘了格式化"。', '"Don\'t forget to format".')}
-            <br />
-            {t('"提交前先跑测试"。', '"Run tests before committing".')}
-          </p>
           <p>{t(
-            <>能不能<strong>自动化</strong>？</>,
-            <>Can we <strong>automate</strong> this?</>
+            <>你的代码库有 <strong>10 万行</strong>代码。</>,
+            <>Your codebase has <strong>100K lines</strong> of code.</>
+          )}</p>
+          <p>{t(
+            <>全部读一遍？Context 窗口直接<strong>爆炸</strong>。</>,
+            <>Read them all? Context window: <strong>exploded</strong>.</>
+          )}</p>
+          <p>{t(
+            '你需要一种更聪明的方式来理解代码。',
+            'You need a smarter way to understand the code.'
+          )}</p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <ChatBubble from="user">{t('给 UserService 添加删除方法', 'Add a delete method to UserService')}</ChatBubble>
+        <Narration>
+          <p>{t(
+            '"UserService"？',
+            '"UserService"?'
+          )}</p>
+          <p>{t(
+            <>你不知道它在哪个文件，不知道它有哪些方法，<br />不知道它依赖什么。</>,
+            <>You don't know which file it's in, what methods it has,<br />or what it depends on.</>
+          )}</p>
+          <p>{t(
+            <>但你不需要知道<strong>所有</strong>代码。<br />你只需要找到<strong>相关</strong>的代码。</>,
+            <>But you don't need to know <strong>all</strong> the code.<br />You just need to find the <strong>relevant</strong> code.</>
           )}</p>
         </Narration>
       </Scene>
 
       <Scene>
         <Narration>
-          <p>{t('想想这些重复的动作——', 'Think about these repetitive actions—')}</p>
-          <p>{t('每次编辑文件后跑 linter。', 'Running linter after every file edit.')}</p>
-          <p>{t('每次提交前跑测试。', 'Running tests before every commit.')}</p>
-          <p>{t('每次会话开始时加载环境变量。', 'Loading environment variables at every session start.')}</p>
-          <p>
-            {t(
-              <strong>一次又一次，完全相同的操作。</strong>,
-              <strong>Over and over, the exact same operations.</strong>
-            )}
-          </p>
-          <p>{t('能不能一劳永逸？', 'Can we set it up once and for all?')}</p>
-        </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <><strong>Hooks</strong> 就是"触发器"。</>,
-              <><strong>Hooks</strong> are "triggers".</>
-            )}
-          </p>
-          <p>
-            {t(
-              '在特定事件发生时，自动执行你定义的脚本。',
-              'When specific events occur, they automatically execute scripts you define.'
-            )}
-          </p>
-          <p>
-            {t(
-              <>就像 Git Hooks——commit 前自动跑 lint。<br />但 Claude Code 的 Hooks 更强大：它可以在 AI 的<strong>整个生命周期</strong>中挂载。</>,
-              <>Like Git Hooks—automatically running lint before a commit.<br />But Claude Code's Hooks are more powerful: they can be attached throughout the AI's <strong>entire lifecycle</strong>.</>
-            )}
-          </p>
+          <p>{t('搜索策略：三种工具，各有所长。', 'Search strategy: three tools, each with its strengths.')}</p>
+          <p>{t(
+            <><strong>Glob</strong>——按文件名模式查找。快速定位文件。</>,
+            <><strong>Glob</strong> — find by file name pattern. Quickly locate files.</>
+          )}</p>
+          <p>{t(
+            <><strong>Grep</strong>——在代码中搜索关键词。精确定位代码片段。</>,
+            <><strong>Grep</strong> — search keywords in code. Pinpoint exact code snippets.</>
+          )}</p>
+          <p>{t(
+            <><strong>Read</strong>——读取特定文件。深入理解实现细节。</>,
+            <><strong>Read</strong> — read a specific file. Deeply understand implementation details.</>
+          )}</p>
         </Narration>
       </Scene>
 
       <Scene interactive>
         <Narration>
-          <p>{t(
-            'AI 的一次工作流程，有哪些关键时刻可以挂载 Hook？',
-            'In an AI workflow, what are the key moments where you can attach a Hook?'
-          )}</p>
-          <p>{t(
-            '点击时间线上的事件，探索每个挂载点：',
-            'Click events on the timeline to explore each hook point:'
-          )}</p>
+          <p>{t('三种搜索工具，各有分工。', 'Three search tools, each with its own role.')}</p>
+          <p>{t('点击每个工具，看看它是怎么搜索的：', 'Click each tool to see how it searches:')}</p>
         </Narration>
-        <HookLifecycle />
+        <CodeSearch />
       </Scene>
 
       <Scene>
         <Narration>
-          <p>{t('Hook 有四种类型——', 'There are four types of Hooks—')}</p>
-          <p>
-            {t(
-              <><strong>Command</strong>：执行 shell 脚本。最常用。</>,
-              <><strong>Command</strong>: Execute shell scripts. The most common.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>HTTP</strong>：发送 HTTP 请求。适合通知和 webhook。</>,
-              <><strong>HTTP</strong>: Send HTTP requests. Great for notifications and webhooks.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>Prompt</strong>：问 AI 一个问题，用回答决定下一步。</>,
-              <><strong>Prompt</strong>: Ask the AI a question and use the answer to decide next steps.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>Agent</strong>：派一个子代理去执行任务。</>,
-              <><strong>Agent</strong>: Dispatch a sub-agent to perform a task.</>
-            )}
-          </p>
+          <p>{t(
+            <>搜索工具之外，还有一个强大的武器——<strong>LSP</strong>。</>,
+            <>Beyond search tools, there's a powerful weapon — <strong>LSP</strong>.</>
+          )}</p>
+          <p>{t(
+            <>Language Server Protocol，语言服务器协议。<br />它为代码提供<strong>语义级</strong>的理解。</>,
+            <>Language Server Protocol.<br />It provides <strong>semantic-level</strong> understanding of code.</>
+          )}</p>
+          <p>{t(
+            <>类型信息、函数定义、引用关系——<br />不是文本匹配，而是真正<strong>理解</strong>代码结构。</>,
+            <>Type information, function definitions, reference relationships —<br />not text matching, but truly <strong>understanding</strong> code structure.</>
+          )}</p>
         </Narration>
-        <DeepDive title={t('Hook 类型详解', 'Hook Types Explained')}>
+        <DeepDive title={t('LSP 能提供什么？', 'What can LSP provide?')}>
           <p>
             {t(
-              'Command 类型最直接——执行一段 shell 命令，用退出码和 stdout 控制行为。PreToolUse 的 Hook 可以返回 JSON，包含 decision（approve/deny）和 reason，来拦截或批准工具调用。',
-              'The Command type is the most straightforward—it executes a shell command and uses exit codes and stdout to control behavior. A PreToolUse Hook can return JSON containing a decision (approve/deny) and reason to intercept or approve tool calls.'
+              'Go to Definition（跳转到定义）、Find References（查找引用）、Hover（悬浮查看类型）——这些 IDE 中常见的功能，背后都是 LSP 在工作。Claude Code 可以借助这些能力，像开发者一样导航代码。',
+              'Go to Definition, Find References, Hover for type info — these common IDE features are all powered by LSP under the hood. Claude Code can leverage these capabilities to navigate code just like a developer.'
             )}
           </p>
         </DeepDive>
@@ -132,70 +103,36 @@ function Ch07Content() {
       <Scene>
         <Narration>
           <p>{t(
-            <>Hook 的真正威力在于<strong>拦截</strong>。</>,
-            <>The real power of Hooks lies in <strong>interception</strong>.</>
+            <>这整套搜索策略，本质上就是 <strong>RAG</strong>。</>,
+            <>This entire search strategy is essentially <strong>RAG</strong>.</>
           )}</p>
-          <p>
-            {t(
-              <>PreToolUse 返回 <code>deny</code>？工具调用被阻止。</>,
-              <>PreToolUse returns <code>deny</code>? The tool call is blocked.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>返回 <code>approve</code>？跳过用户确认，自动执行。</>,
-              <>Returns <code>approve</code>? Skip user confirmation, execute automatically.</>
-            )}
-          </p>
-          <p>
-            {t(
-              'PostToolUse？工具执行完自动做后处理。',
-              'PostToolUse? Automatically run post-processing after tool execution.'
-            )}
-          </p>
           <p>{t(
-            '你可以精确控制 AI 的每一个动作。',
-            'You can precisely control every action the AI takes.'
+            <>Retrieval-Augmented Generation——<br /><strong>检索增强生成</strong>。</>,
+            <>Retrieval-Augmented Generation —<br /><strong>retrieve first, then generate</strong>.</>
+          )}</p>
+          <p>{t(
+            <>不是把 10 万行代码全部塞进 context，<br />而是<strong>按需检索</strong>，只拿相关的片段。</>,
+            <>Instead of stuffing 100K lines into context,<br /><strong>retrieve on demand</strong>, taking only relevant snippets.</>
+          )}</p>
+          <p>{t(
+            <>先搜索，再阅读，最后生成。<br />每一步都在<strong>缩小范围</strong>，节省 context。</>,
+            <>Search first, then read, finally generate.<br />Each step <strong>narrows the scope</strong>, saving context.</>
           )}</p>
         </Narration>
       </Scene>
 
       <Scene>
         <Narration>
-          <p>
-            {t(
-              <>Hooks 把<strong>"每次都要手动做"</strong>变成了<strong>"一次配置，永远自动"</strong>。</>,
-              <>Hooks turn <strong>"do it manually every time"</strong> into <strong>"configure once, automate forever"</strong>.</>
-            )}
-          </p>
           <p>{t(
-            '它是 Claude Code 自动化的基石。',
-            'It\'s the cornerstone of Claude Code automation.'
+            <>记忆让你知道项目的<strong>规则</strong>，<br />代码搜索让你理解项目的<strong>代码</strong>。</>,
+            <>Memory tells you the project's <strong>rules</strong>,<br />code search helps you understand the project's <strong>code</strong>.</>
+          )}</p>
+          <p>{t(
+            <>下一章，我们来看自动化触发器——</>,
+            <>Next chapter, let's look at automated triggers —</>
           )}</p>
           <p>
-            {t(
-              <>编辑后自动格式化。<br />提交前自动测试。<br />危险操作自动拦截。</>,
-              <>Auto-format after editing.<br />Auto-test before committing.<br />Auto-intercept dangerous operations.</>
-            )}
-          </p>
-          <p>{t('一切都在后台默默发生。', 'Everything happens silently in the background.')}</p>
-        </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>{t('自动化很好。', 'Automation is great.')}</p>
-          <p>
-            {t(
-              <>但如果你有一套复杂的工作流程，想<strong>打包复用</strong>呢？</>,
-              <>But what if you have a complex workflow you want to <strong>package for reuse</strong>?</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>下一章——<strong>Skills</strong>。</>,
-              <>Next chapter—<strong>Skills</strong>.</>
-            )}
+            <strong>{t('Hooks', 'Hooks')}</strong>{t('。', '.')}
           </p>
         </Narration>
       </Scene>

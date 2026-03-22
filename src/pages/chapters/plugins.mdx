@@ -1,10 +1,469 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 9
+chapter: 10
 title: 'Plugins'
 subtitle: '打包你的超能力'
 ---
 
-import Ch09Scenes from '../../chapters/ch09/Ch09Scenes';
+import Ch10Scenes from '../../chapters/ch10/Ch10Scenes';
 
-<Ch09Scenes client:only="react" />
+<Ch10Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## Plugins：能力的打包与分发
+
+在前面的章节中，我们学习了 Hooks（事件驱动的自动化）和 Skills（可复用的提示模板）。但当你的团队积累了大量相关联的 Hooks、Skills 甚至 MCP 服务器配置后，逐个管理和分发它们变得困难。**Plugins** 就是解决这个问题的方案——它们将相关的能力打包成一个可安装、可分发的整体。
+
+你可以把 Plugin 想象成一个"能力包"：它可以同时包含多个 Skills、多个 Hooks 和 MCP 服务器配置，围绕某个特定领域（如测试、部署、代码质量）提供完整的增强体验。
+
+### Plugin 的目录结构
+
+一个 Plugin 遵循约定的目录结构：
+
+<div class="chapter-article__ascii">
+{`my-plugin/
+  ├── PLUGIN.md              # Plugin 元信息与说明
+  ├── skills/
+  │   ├── test-unit.md       # /test-unit Skill
+  │   ├── test-e2e.md        # /test-e2e Skill
+  │   └── test-coverage.md   # /test-coverage Skill
+  ├── hooks/
+  │   └── settings.json      # Hook 配置
+  └── mcp/
+      └── config.json        # MCP 服务器配置`}
+</div>
+
+**PLUGIN.md** 是 Plugin 的清单文件，描述了 Plugin 的名称、用途和包含的能力：
+
+<pre><code>{`# Testing Plugin
+
+A comprehensive testing plugin for Claude Code.
+
+## Skills
+- /test-unit — Run unit tests for specified files or modules
+- /test-e2e — Run end-to-end test suites
+- /test-coverage — Generate and analyze test coverage reports
+
+## Hooks
+- PostToolUse: Auto-lint after file writes
+- PreToolUse: Block commits without passing tests
+
+## MCP Servers
+- coverage-server: Provides real-time coverage data`}</code></pre>
+
+### Plugin 的组成部分
+
+一个 Plugin 可以包含以下三种能力的任意组合：
+
+**Skills（提示模板）**
+
+Plugin 中的 Skills 与独立的 Skills 完全相同——它们是 Markdown 文件，通过斜杠命令调用。唯一的区别是它们被组织在 Plugin 的 `skills/` 目录下。
+
+<pre><code>{`# skills/test-unit.md
+
+Run unit tests for the specified file or module.
+
+Steps:
+1. Identify the test framework (Jest, Vitest, Mocha, etc.)
+2. Find corresponding test files for the target
+3. Execute tests with verbose output
+4. If tests fail, analyze failures and suggest fixes
+5. Report coverage for the tested files`}</code></pre>
+
+**Hooks（自动化触发器）**
+
+Plugin 的 Hooks 配置在 `hooks/settings.json` 中，安装时会合并到用户的 Hook 配置中：
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx eslint --fix $CLAUDE_FILE_PATH 2>/dev/null || true"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "echo $CLAUDE_TOOL_INPUT | grep -q 'git push' && npm test || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+**MCP 服务器配置**
+
+Plugin 可以配置 MCP 服务器，扩展 Claude Code 可以访问的外部数据源和工具：
+
+<pre><code>{`{
+  "mcpServers": {
+    "coverage-server": {
+      "command": "npx",
+      "args": ["coverage-mcp-server", "--root", "."],
+      "env": {
+        "COVERAGE_DIR": "./coverage"
+      }
+    }
+  }
+}`}</code></pre>
+
+### Plugin vs 独立 Skills
+
+为什么需要 Plugin 而不是单独管理 Skills 和 Hooks？
+
+<div class="chapter-article__ascii">
+{`┌───────────────┬───────────────────┬───────────────────────┐
+│               │  独立 Skills/Hooks │  Plugin               │
+├───────────────┼───────────────────┼───────────────────────┤
+│  组织方式      │  散落各处          │  集中管理              │
+│  分发方式      │  手动复制          │  git clone / npm      │
+│  版本管理      │  无统一版本        │  统一版本控制          │
+│  能力组合      │  各自独立          │  Skills + Hooks + MCP │
+│  安装/卸载     │  手动操作          │  一键安装/卸载         │
+│  适用场景      │  简单、独立的任务   │  领域完整解决方案      │
+└───────────────┴───────────────────┴───────────────────────┘`}
+</div>
+
+### 分发方式
+
+Plugins 可以通过多种渠道分发：
+
+**Git 仓库**
+
+最常见的分发方式。团队或社区将 Plugin 发布为 Git 仓库：
+
+<pre><code>{`# 安装 Plugin
+claude plugin add https://github.com/team/testing-plugin
+
+# 从特定分支安装
+claude plugin add https://github.com/team/testing-plugin --branch v2`}</code></pre>
+
+**npm 包**
+
+对于 Node.js 生态，Plugin 可以作为 npm 包分发：
+
+<pre><code>{`# 作为 npm 包安装
+claude plugin add @team/claude-testing-plugin`}</code></pre>
+
+**本地路径**
+
+开发阶段可以从本地路径安装：
+
+<pre><code>{`# 从本地路径安装
+claude plugin add ./my-local-plugin`}</code></pre>
+
+### 配置与安装
+
+Plugins 的安装信息记录在配置文件中：
+
+<pre><code>{`{
+  "plugins": [
+    {
+      "name": "testing-plugin",
+      "source": "https://github.com/team/testing-plugin",
+      "version": "1.2.0",
+      "enabled": true
+    },
+    {
+      "name": "deploy-plugin",
+      "source": "@team/claude-deploy-plugin",
+      "version": "3.0.1",
+      "enabled": true
+    }
+  ]
+}`}</code></pre>
+
+每个 Plugin 可以单独启用或禁用，不需要卸载就能暂时关闭某些功能。
+
+### 实战示例：Testing Plugin
+
+让我们看一个完整的 Testing Plugin，它围绕"测试"这个领域提供全方位的增强：
+
+<div class="chapter-article__ascii">
+{`testing-plugin/
+  ├── PLUGIN.md
+  ├── skills/
+  │   ├── test.md              # /test — 智能测试执行
+  │   ├── test-watch.md        # /test-watch — 监听模式测试
+  │   └── test-coverage.md     # /test-coverage — 覆盖率分析
+  ├── hooks/
+  │   └── settings.json        # 自动 lint + 测试防护
+  └── mcp/
+      └── config.json          # 覆盖率数据 MCP 服务器`}
+</div>
+
+这个 Plugin 安装后：
+
+1. 你可以使用 `/test` 命令让 Claude 智能地找到并运行相关测试
+2. 每次文件写入后会自动运行 ESLint 修复
+3. 在推送代码前会自动运行测试套件
+4. Claude 可以通过 MCP 服务器访问实时的测试覆盖率数据
+
+这就是 Plugin 的威力——它不是单一功能，而是一个围绕特定领域的**完整工作流增强方案**。
+
+### Plugin 的设计原则
+
+- **单一领域**：一个 Plugin 围绕一个领域（测试、部署、代码质量等），不要混合无关的功能。
+- **渐进增强**：Plugin 的每个能力应该独立有价值，即使只用其中一部分。
+- **文档完整**：PLUGIN.md 应该清晰描述 Plugin 提供的每个能力和使用方法。
+- **版本兼容**：更新 Plugin 时保持向后兼容，避免破坏已有的工作流。
+- **最小权限**：MCP 服务器配置应遵循最小权限原则，只请求必要的权限。
+
+### 与生态的关系
+
+Plugins 是 Claude Code 扩展生态的最高层抽象：
+
+<div class="chapter-article__ascii">
+{`┌─────────────────────────────────────┐
+│           Plugin                    │
+│  ┌──────┐ ┌──────┐ ┌─────────────┐ │
+│  │Skills│ │Hooks │ │ MCP Servers │ │
+│  └──────┘ └──────┘ └─────────────┘ │
+└─────────────────────────────────────┘
+        │        │          │
+        ▼        ▼          ▼
+    提示注入  事件自动化  外部数据/工具`}
+</div>
+
+从底层的工具调用，到中层的 MCP 协议，再到 Hooks 的自动化和 Skills 的流程封装，最终由 Plugins 将一切打包在一起。这构成了 Claude Code 完整的能力扩展体系。
+
+</div>
+
+<div class="article-en">
+
+## Plugins: Packaging and Distributing Capabilities
+
+In the previous chapters, we learned about Hooks (event-driven automation) and Skills (reusable prompt templates). But when your team accumulates many related Hooks, Skills, and even MCP server configurations, managing and distributing them individually becomes difficult. **Plugins** solve this problem — they package related capabilities into an installable, distributable unit.
+
+Think of a Plugin as a "capability package": it can simultaneously contain multiple Skills, multiple Hooks, and MCP server configurations, providing a complete enhanced experience around a specific domain (such as testing, deployment, or code quality).
+
+### Plugin Directory Structure
+
+A Plugin follows a conventional directory structure:
+
+<div class="chapter-article__ascii">
+{`my-plugin/
+  ├── PLUGIN.md              # Plugin metadata and description
+  ├── skills/
+  │   ├── test-unit.md       # /test-unit Skill
+  │   ├── test-e2e.md        # /test-e2e Skill
+  │   └── test-coverage.md   # /test-coverage Skill
+  ├── hooks/
+  │   └── settings.json      # Hook configuration
+  └── mcp/
+      └── config.json        # MCP server configuration`}
+</div>
+
+**PLUGIN.md** is the Plugin's manifest file, describing the Plugin's name, purpose, and included capabilities:
+
+<pre><code>{`# Testing Plugin
+
+A comprehensive testing plugin for Claude Code.
+
+## Skills
+- /test-unit — Run unit tests for specified files or modules
+- /test-e2e — Run end-to-end test suites
+- /test-coverage — Generate and analyze test coverage reports
+
+## Hooks
+- PostToolUse: Auto-lint after file writes
+- PreToolUse: Block commits without passing tests
+
+## MCP Servers
+- coverage-server: Provides real-time coverage data`}</code></pre>
+
+### Plugin Components
+
+A Plugin can contain any combination of these three capability types:
+
+**Skills (Prompt Templates)**
+
+Skills within a Plugin are identical to standalone Skills — they are Markdown files invoked via slash commands. The only difference is they are organized under the Plugin's `skills/` directory.
+
+<pre><code>{`# skills/test-unit.md
+
+Run unit tests for the specified file or module.
+
+Steps:
+1. Identify the test framework (Jest, Vitest, Mocha, etc.)
+2. Find corresponding test files for the target
+3. Execute tests with verbose output
+4. If tests fail, analyze failures and suggest fixes
+5. Report coverage for the tested files`}</code></pre>
+
+**Hooks (Automated Triggers)**
+
+Plugin Hooks are configured in `hooks/settings.json` and merged into the user's Hook configuration upon installation:
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx eslint --fix $CLAUDE_FILE_PATH 2>/dev/null || true"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "echo $CLAUDE_TOOL_INPUT | grep -q 'git push' && npm test || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+**MCP Server Configuration**
+
+Plugins can configure MCP servers, extending the external data sources and tools that Claude Code can access:
+
+<pre><code>{`{
+  "mcpServers": {
+    "coverage-server": {
+      "command": "npx",
+      "args": ["coverage-mcp-server", "--root", "."],
+      "env": {
+        "COVERAGE_DIR": "./coverage"
+      }
+    }
+  }
+}`}</code></pre>
+
+### Plugin vs Standalone Skills
+
+Why use Plugins instead of managing Skills and Hooks independently?
+
+<div class="chapter-article__ascii">
+{`┌───────────────┬─────────────────────┬─────────────────────┐
+│               │  Standalone         │  Plugin             │
+│               │  Skills/Hooks       │                     │
+├───────────────┼─────────────────────┼─────────────────────┤
+│  Organization │  Scattered          │  Centralized        │
+│  Distribution │  Manual copy        │  git clone / npm    │
+│  Versioning   │  No unified version │  Unified versioning │
+│  Composition  │  Independent        │  Skills+Hooks+MCP   │
+│  Install      │  Manual setup       │  One-click install  │
+│  Use case     │  Simple, isolated   │  Domain solutions   │
+└───────────────┴─────────────────────┴─────────────────────┘`}
+</div>
+
+### Distribution Methods
+
+Plugins can be distributed through multiple channels:
+
+**Git Repositories**
+
+The most common distribution method. Teams and communities publish Plugins as Git repositories:
+
+<pre><code>{`# Install a Plugin
+claude plugin add https://github.com/team/testing-plugin
+
+# Install from a specific branch
+claude plugin add https://github.com/team/testing-plugin --branch v2`}</code></pre>
+
+**npm Packages**
+
+For the Node.js ecosystem, Plugins can be distributed as npm packages:
+
+<pre><code>{`# Install as an npm package
+claude plugin add @team/claude-testing-plugin`}</code></pre>
+
+**Local Paths**
+
+During development, install from a local path:
+
+<pre><code>{`# Install from a local path
+claude plugin add ./my-local-plugin`}</code></pre>
+
+### Configuration and Installation
+
+Plugin installation information is recorded in the configuration file:
+
+<pre><code>{`{
+  "plugins": [
+    {
+      "name": "testing-plugin",
+      "source": "https://github.com/team/testing-plugin",
+      "version": "1.2.0",
+      "enabled": true
+    },
+    {
+      "name": "deploy-plugin",
+      "source": "@team/claude-deploy-plugin",
+      "version": "3.0.1",
+      "enabled": true
+    }
+  ]
+}`}</code></pre>
+
+Each Plugin can be individually enabled or disabled — you can temporarily turn off certain features without uninstalling.
+
+### Example: Testing Plugin
+
+Let's look at a complete Testing Plugin that provides comprehensive enhancement around the "testing" domain:
+
+<div class="chapter-article__ascii">
+{`testing-plugin/
+  ├── PLUGIN.md
+  ├── skills/
+  │   ├── test.md              # /test — Smart test execution
+  │   ├── test-watch.md        # /test-watch — Watch mode testing
+  │   └── test-coverage.md     # /test-coverage — Coverage analysis
+  ├── hooks/
+  │   └── settings.json        # Auto-lint + test guardrails
+  └── mcp/
+      └── config.json          # Coverage data MCP server`}
+</div>
+
+Once installed, this Plugin provides:
+
+1. Use `/test` to have Claude intelligently find and run relevant tests
+2. Auto-run ESLint fix after every file write
+3. Auto-run the test suite before pushing code
+4. Claude can access real-time test coverage data through the MCP server
+
+This is the power of Plugins — not a single feature, but a **complete workflow enhancement** around a specific domain.
+
+### Plugin Design Principles
+
+- **Single domain**: A Plugin focuses on one domain (testing, deployment, code quality, etc.) — don't mix unrelated functionality.
+- **Progressive enhancement**: Each capability in a Plugin should be independently valuable, even if only a subset is used.
+- **Complete documentation**: PLUGIN.md should clearly describe every capability and how to use it.
+- **Version compatibility**: Maintain backward compatibility when updating Plugins to avoid breaking existing workflows.
+- **Least privilege**: MCP server configurations should follow the principle of least privilege, requesting only necessary permissions.
+
+### Relationship to the Ecosystem
+
+Plugins are the highest-level abstraction in Claude Code's extension ecosystem:
+
+<div class="chapter-article__ascii">
+{`┌─────────────────────────────────────┐
+│           Plugin                    │
+│  ┌──────┐ ┌──────┐ ┌─────────────┐ │
+│  │Skills│ │Hooks │ │ MCP Servers │ │
+│  └──────┘ └──────┘ └─────────────┘ │
+└─────────────────────────────────────┘
+        │        │          │
+        ▼        ▼          ▼
+  Prompt    Event        External
+  Injection Automation   Data/Tools`}
+</div>
+
+From low-level tool calls, to the MCP protocol at the middle layer, to Hook automation and Skill workflow encapsulation, and finally Plugins packaging everything together — this forms Claude Code's complete capability extension system.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/skills`}>
+<span class="chapter-article__nav-label">上一章 Prev</span>
+<span class="chapter-article__nav-title">Ch.9 Skills</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/agents`}>
+<span class="chapter-article__nav-label">下一章 Next</span>
+<span class="chapter-article__nav-title">Ch.11 Agents & Subagents</span>
+</a>
+</div>
+</div>

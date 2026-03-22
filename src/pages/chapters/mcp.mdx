@@ -8,3 +8,383 @@ subtitle: '连接外部世界'
 import Ch05Scenes from '../../chapters/ch05/Ch05Scenes';
 
 <Ch05Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+<h2>什么是 Model Context Protocol？</h2>
+
+<p>Claude Code 本身具有强大的内置工具——读写文件、执行命令、搜索代码。但现实世界的开发工作远不止于此：你需要查看 GitHub Issue、发送 Slack 消息、查询数据库、操作浏览器、访问 Jira 看板...</p>
+
+<p><strong>Model Context Protocol（MCP）</strong> 就是为解决这个问题而设计的开放协议。它定义了一种标准化的方式，让 AI 应用能够连接到外部服务和数据源。你可以把 MCP 想象成 AI 世界的 USB 接口——任何符合协议的设备都可以即插即用。</p>
+
+<h2>MCP 架构</h2>
+
+<div class="chapter-article__ascii">{`
+  ┌──────────────────────────────────────────────────┐
+  │                  Claude Code (Host)               │
+  │                                                    │
+  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
+  │  │ MCP Client │  │ MCP Client │  │ MCP Client │  │
+  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  │
+  └────────┼───────────────┼───────────────┼──────────┘
+           │               │               │
+     ┌─────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐
+     │ MCP Server │  │ MCP Server │  │ MCP Server │
+     │  (GitHub)  │  │  (Slack)   │  │ (Database) │
+     └─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+           │               │               │
+     ┌─────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐
+     │  GitHub    │  │   Slack    │  │ PostgreSQL │
+     │    API     │  │    API     │  │   Server   │
+     └────────────┘  └────────────┘  └────────────┘
+`}</div>
+
+<p>MCP 采用<strong>客户端-服务器</strong>架构：</p>
+
+<ul>
+<li><strong>Host（宿主）</strong>：Claude Code 本身，负责管理多个 MCP 客户端</li>
+<li><strong>Client（客户端）</strong>：由 Host 创建，与单个 MCP Server 保持一对一连接</li>
+<li><strong>Server（服务器）</strong>：独立进程，连接到外部服务，向 Client 暴露能力</li>
+</ul>
+
+<h2>MCP Server 暴露的三种能力</h2>
+
+<p>每个 MCP Server 可以向 AI 提供三种类型的能力：</p>
+
+<h3>1. Tools（工具）</h3>
+
+<p>可供 AI 调用的函数。例如 GitHub MCP Server 可能提供 <code>create_issue</code>、<code>list_pull_requests</code>、<code>merge_pr</code> 等工具。Claude 可以像使用内置工具一样调用它们。</p>
+
+<h3>2. Resources（资源）</h3>
+
+<p>可供 AI 读取的数据。类似于 REST API 的 GET 端点。例如，一个数据库 MCP Server 可能暴露表结构作为资源，让 Claude 直接读取 schema 信息。</p>
+
+<h3>3. Prompts（提示模板）</h3>
+
+<p>预定义的交互模板。Server 可以提供特定场景下的提示模板，帮助用户更有效地与 AI 交互。</p>
+
+<h2>如何配置 MCP Server</h2>
+
+<p>在 Claude Code 中配置 MCP Server 非常简单。在项目的 <code>.claude/settings.json</code> 中添加：</p>
+
+<pre><code>{`{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxxxxxxxxxx"
+      }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://localhost:5432/mydb"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}`}</code></pre>
+
+<p>每个 Server 配置包含：</p>
+
+<ul>
+<li><code>command</code>：启动 Server 的命令</li>
+<li><code>args</code>：命令行参数</li>
+<li><code>env</code>（可选）：环境变量，用于传递 API 密钥等</li>
+</ul>
+
+<h2>传输协议</h2>
+
+<p>MCP 支持两种传输方式：</p>
+
+<h3>stdio（标准输入/输出）</h3>
+
+<p>用于<strong>本地进程</strong>。Host 直接启动 Server 进程，通过 stdin/stdout 通信。这是最常见的方式——Server 作为子进程运行，无需网络配置。</p>
+
+<pre><code>{`Host                    Server (子进程)
+  │                         │
+  │── JSON-RPC via stdin ──▶│
+  │◀── JSON-RPC via stdout ─│
+  │                         │
+  │  (stderr 用于日志输出)    │`}</code></pre>
+
+<h3>SSE（Server-Sent Events）</h3>
+
+<p>用于<strong>远程服务器</strong>。通过 HTTP 连接到远程 MCP Server，适合团队共享的服务或云端部署的工具。</p>
+
+<pre><code>{`{
+  "remote-server": {
+    "url": "https://mcp.example.com/sse",
+    "headers": {
+      "Authorization": "Bearer token_xxx"
+    }
+  }
+}`}</code></pre>
+
+<h2>JSON-RPC：底层协议</h2>
+
+<p>MCP 的通信基于 <strong>JSON-RPC 2.0</strong> 协议。每一次工具调用都是一个标准的 JSON-RPC 请求/响应对：</p>
+
+<pre><code>{`// Client → Server: 调用工具
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "create_issue",
+    "arguments": {
+      "repo": "user/project",
+      "title": "Fix login bug",
+      "body": "The login form crashes on submit..."
+    }
+  }
+}
+
+// Server → Client: 返回结果
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Created issue #42: Fix login bug"
+      }
+    ]
+  }
+}`}</code></pre>
+
+<h2>常用 MCP Server</h2>
+
+<p>MCP 生态系统已经有大量可用的 Server：</p>
+
+<ul>
+<li><strong>GitHub</strong>：管理 Issue、PR、代码审查</li>
+<li><strong>Slack</strong>：发送消息、查看频道、管理工作流</li>
+<li><strong>PostgreSQL / MySQL</strong>：查询数据库、管理表结构</li>
+<li><strong>Playwright</strong>：操控浏览器、截屏、自动化测试</li>
+<li><strong>Filesystem</strong>：沙盒化的文件系统访问</li>
+<li><strong>Sentry</strong>：查看错误报告和性能数据</li>
+<li><strong>Linear / Jira</strong>：项目管理和任务追踪</li>
+</ul>
+
+<h2>MCP vs 内置工具</h2>
+
+<p>你可能会问：为什么不把所有工具都做成内置的？</p>
+
+<ul>
+<li><strong>内置工具</strong>：由 Claude Code 团队开发和维护，数量有限但深度集成。包括 Read、Edit、Bash、Grep 等核心开发工具。</li>
+<li><strong>MCP 工具</strong>：任何人都可以编写 MCP Server。生态系统是开放的、可扩展的。你可以为自己公司的内部系统编写 MCP Server，让 Claude Code 直接操作。</li>
+</ul>
+
+<p>MCP 的核心价值在于<strong>可扩展性</strong>。它把 Claude Code 从一个固定功能的工具变成了一个可以连接任何服务的平台。每一个新的 MCP Server 都在扩展 Claude 能力的边界。</p>
+
+<h3>安全考虑</h3>
+
+<p>MCP Server 在独立进程中运行，Claude Code 的权限系统同样适用于 MCP 工具调用。敏感操作（如写入数据库、发送消息）会在执行前请求用户确认。API 密钥通过环境变量传递，不会出现在对话上下文中。</p>
+
+</div>
+
+<div class="article-en">
+
+<h2>What is the Model Context Protocol?</h2>
+
+<p>Claude Code comes with powerful built-in tools — reading and writing files, executing commands, searching code. But real-world development goes far beyond that: you need to check GitHub Issues, send Slack messages, query databases, operate browsers, access Jira boards...</p>
+
+<p><strong>Model Context Protocol (MCP)</strong> is an open protocol designed to solve this problem. It defines a standardized way for AI applications to connect to external services and data sources. Think of MCP as the USB port of the AI world — any device that follows the protocol can plug and play.</p>
+
+<h2>MCP Architecture</h2>
+
+<div class="chapter-article__ascii">{`
+  ┌──────────────────────────────────────────────────┐
+  │                  Claude Code (Host)               │
+  │                                                    │
+  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
+  │  │ MCP Client │  │ MCP Client │  │ MCP Client │  │
+  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  │
+  └────────┼───────────────┼───────────────┼──────────┘
+           │               │               │
+     ┌─────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐
+     │ MCP Server │  │ MCP Server │  │ MCP Server │
+     │  (GitHub)  │  │  (Slack)   │  │ (Database) │
+     └─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+           │               │               │
+     ┌─────▼──────┐  ┌─────▼──────┐  ┌─────▼──────┐
+     │  GitHub    │  │   Slack    │  │ PostgreSQL │
+     │    API     │  │    API     │  │   Server   │
+     └────────────┘  └────────────┘  └────────────┘
+`}</div>
+
+<p>MCP uses a <strong>client-server</strong> architecture:</p>
+
+<ul>
+<li><strong>Host</strong>: Claude Code itself, responsible for managing multiple MCP clients</li>
+<li><strong>Client</strong>: Created by the Host, maintains a one-to-one connection with a single MCP Server</li>
+<li><strong>Server</strong>: Independent process that connects to an external service and exposes capabilities to the Client</li>
+</ul>
+
+<h2>Three Capabilities Exposed by MCP Servers</h2>
+
+<p>Each MCP Server can provide three types of capabilities to the AI:</p>
+
+<h3>1. Tools</h3>
+
+<p>Functions the AI can call. For example, a GitHub MCP Server might provide <code>create_issue</code>, <code>list_pull_requests</code>, and <code>merge_pr</code> tools. Claude can call them just like built-in tools.</p>
+
+<h3>2. Resources</h3>
+
+<p>Data the AI can read. Similar to REST API GET endpoints. For example, a database MCP Server might expose table schemas as resources, letting Claude directly read schema information.</p>
+
+<h3>3. Prompts</h3>
+
+<p>Predefined interaction templates. Servers can provide prompt templates for specific scenarios, helping users interact with the AI more effectively.</p>
+
+<h2>How to Configure MCP Servers</h2>
+
+<p>Configuring MCP Servers in Claude Code is straightforward. Add the following to your project's <code>.claude/settings.json</code>:</p>
+
+<pre><code>{`{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxxxxxxxxxx"
+      }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://localhost:5432/mydb"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}`}</code></pre>
+
+<p>Each Server configuration contains:</p>
+
+<ul>
+<li><code>command</code>: The command to start the Server</li>
+<li><code>args</code>: Command-line arguments</li>
+<li><code>env</code> (optional): Environment variables for passing API keys, etc.</li>
+</ul>
+
+<h2>Transport Protocols</h2>
+
+<p>MCP supports two transport methods:</p>
+
+<h3>stdio (Standard I/O)</h3>
+
+<p>Used for <strong>local processes</strong>. The Host directly spawns the Server process and communicates via stdin/stdout. This is the most common approach — the Server runs as a child process with no network configuration needed.</p>
+
+<pre><code>{`Host                    Server (child process)
+  │                         │
+  │── JSON-RPC via stdin ──▶│
+  │◀── JSON-RPC via stdout ─│
+  │                         │
+  │  (stderr used for logs)  │`}</code></pre>
+
+<h3>SSE (Server-Sent Events)</h3>
+
+<p>Used for <strong>remote servers</strong>. Connects to a remote MCP Server via HTTP, suitable for team-shared services or cloud-deployed tools.</p>
+
+<pre><code>{`{
+  "remote-server": {
+    "url": "https://mcp.example.com/sse",
+    "headers": {
+      "Authorization": "Bearer token_xxx"
+    }
+  }
+}`}</code></pre>
+
+<h2>JSON-RPC: The Underlying Protocol</h2>
+
+<p>MCP communication is based on the <strong>JSON-RPC 2.0</strong> protocol. Every tool call is a standard JSON-RPC request/response pair:</p>
+
+<pre><code>{`// Client → Server: Call tool
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "create_issue",
+    "arguments": {
+      "repo": "user/project",
+      "title": "Fix login bug",
+      "body": "The login form crashes on submit..."
+    }
+  }
+}
+
+// Server → Client: Return result
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Created issue #42: Fix login bug"
+      }
+    ]
+  }
+}`}</code></pre>
+
+<h2>Popular MCP Servers</h2>
+
+<p>The MCP ecosystem already has a large number of available Servers:</p>
+
+<ul>
+<li><strong>GitHub</strong>: Manage Issues, PRs, code reviews</li>
+<li><strong>Slack</strong>: Send messages, browse channels, manage workflows</li>
+<li><strong>PostgreSQL / MySQL</strong>: Query databases, manage table schemas</li>
+<li><strong>Playwright</strong>: Control browsers, take screenshots, automate testing</li>
+<li><strong>Filesystem</strong>: Sandboxed file system access</li>
+<li><strong>Sentry</strong>: View error reports and performance data</li>
+<li><strong>Linear / Jira</strong>: Project management and task tracking</li>
+</ul>
+
+<h2>MCP vs Built-in Tools</h2>
+
+<p>You might ask: why not make everything built-in?</p>
+
+<ul>
+<li><strong>Built-in tools</strong>: Developed and maintained by the Claude Code team. Limited in number but deeply integrated. Includes core dev tools like Read, Edit, Bash, and Grep.</li>
+<li><strong>MCP tools</strong>: Anyone can write an MCP Server. The ecosystem is open and extensible. You can write an MCP Server for your company's internal systems and let Claude Code operate them directly.</li>
+</ul>
+
+<p>The core value of MCP is <strong>extensibility</strong>. It transforms Claude Code from a fixed-function tool into a platform that can connect to any service. Every new MCP Server expands the boundaries of Claude's capabilities.</p>
+
+<h3>Security Considerations</h3>
+
+<p>MCP Servers run in independent processes, and Claude Code's permission system applies equally to MCP tool calls. Sensitive operations (like writing to a database or sending messages) prompt for user confirmation before execution. API keys are passed via environment variables and never appear in the conversation context.</p>
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/agentic-loop`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.4 Agentic Loop</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/memory`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.6 Memory</span>
+</a>
+</div>
+
+</div>

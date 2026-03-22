@@ -4,11 +4,13 @@ import '../styles/global.css';
 interface Props {
   title?: string;
   description?: string;
+  bodyClass?: string;
 }
 
 const {
   title = 'Claude 101',
   description = '以 AI 的第一人称视角，交互式理解 Claude Code 的工作原理',
+  bodyClass = '',
 } = Astro.props;
 ---
 
@@ -27,6 +29,11 @@ const {
       href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=ZCOOL+KuaiLe&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <style is:inline>
+      /* Critical: hide article before React hydrates to prevent flash */
+      .chapter-article { display: none !important; }
+      body.scroll-unlocked .chapter-article { display: block !important; }
+    </style>
     <script is:inline>
       // Sync lang attribute before first paint to avoid flash
       (function() {
@@ -36,7 +43,7 @@ const {
       })();
     </script>
   </head>
-  <body>
+  <body class={bodyClass}>
     <slot />
   </body>
 </html>

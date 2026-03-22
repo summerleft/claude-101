@@ -1,0 +1,664 @@
+---
+layout: '../../layouts/ChapterLayout.astro'
+chapter: 7
+title: 'Codebase Intelligence'
+subtitle: '代码库的理解与检索'
+---
+
+import Ch07Scenes from '../../chapters/ch07/Ch07Scenes';
+
+<Ch07Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+<h2>为什么不能全部加载？</h2>
+
+<p>一个直觉性的想法是：既然 Claude 要理解我的代码库，那就把所有代码都塞进上下文窗口不就好了？</p>
+
+<p>答案是：<strong>不行</strong>。原因有三：</p>
+
+<ul>
+<li><strong>上下文窗口有限</strong>：即使拥有 200K token 的上下文窗口，一个中型项目（10 万行代码）也能轻松超出这个限制。一行代码大约消耗 3-5 个 token，10 万行就是 30-50 万 token——远超上下文窗口容量。</li>
+<li><strong>成本高昂</strong>：每一个 token 都有成本。把整个代码库塞进去，意味着每一轮对话都要为无关代码付费。如果你只是想修改一个按钮的样式，为什么要为数据库迁移脚本付费？</li>
+<li><strong>噪声淹没信号</strong>：即使能装下，大量无关代码会稀释真正重要的信息。模型在一堆噪声中找到关键代码的能力会大幅下降——这就是"大海捞针"问题。</li>
+</ul>
+
+<div class="chapter-article__ascii">{`
+  ┌──────────────────────────────────────────────────┐
+  │         为什么不能全部加载？                        │
+  │                                                    │
+  │  代码库: 100,000 行  ≈  300K-500K tokens           │
+  │  上下文窗口: 200K tokens                            │
+  │                                                    │
+  │  ████████████████████████████████████  代码库       │
+  │  ██████████████████                    上下文窗口   │
+  │                                                    │
+  │  结论: 装不下。即使装下，噪声太多。                  │
+  │  策略: 按需检索，只加载相关代码。                    │
+  └──────────────────────────────────────────────────┘
+`}</div>
+
+<p>所以 Claude Code 采用了一种更聪明的策略：<strong>按需检索</strong>。不是把所有书都搬进房间，而是在需要时去图书馆找到那本书、翻到那一页。</p>
+
+<h2>搜索三件套：Glob、Grep、Read</h2>
+
+<p>Claude Code 理解代码库的核心能力建立在三个搜索工具之上。它们各有所长，组合使用就像一个经验丰富的开发者浏览代码库一样。</p>
+
+<h3>Glob：按模式查找文件</h3>
+
+<p>Glob 是文件路径的模式匹配工具。当你知道你要找什么类型的文件，但不确定它在哪里时，Glob 是第一选择。</p>
+
+<pre><code>{`// 查找所有 TypeScript 文件
+Glob("**/*.ts")
+→ src/index.ts, src/utils/helper.ts, src/services/user.ts, ...
+
+// 查找 components 目录下所有 React 组件
+Glob("src/components/**/*.tsx")
+→ src/components/Button.tsx, src/components/Modal.tsx, ...
+
+// 查找所有测试文件
+Glob("**/*.test.{ts,tsx}")
+→ src/__tests__/user.test.ts, src/components/Button.test.tsx, ...
+
+// 查找配置文件
+Glob("*config*")
+→ tsconfig.json, tailwind.config.ts, vite.config.ts, ...`}</code></pre>
+
+<h3>Grep：搜索文件内容</h3>
+
+<p>Grep 是内容搜索工具，支持正则表达式。当你知道代码里有什么关键词，但不知道在哪个文件时，Grep 是利器。</p>
+
+<pre><code>{`// 查找某个类的定义
+Grep("class UserService")
+→ src/services/user-service.ts:15: export class UserService {
+
+// 查找某个函数的所有调用位置
+Grep("handleSubmit\\(")
+→ src/components/LoginForm.tsx:42: onClick={handleSubmit}
+→ src/components/RegisterForm.tsx:38: onSubmit={handleSubmit}
+
+// 查找 TODO 注释
+Grep("TODO|FIXME|HACK")
+→ src/utils/cache.ts:23: // TODO: implement cache invalidation
+→ src/api/auth.ts:67: // FIXME: token refresh race condition`}</code></pre>
+
+<h3>Read：读取文件内容</h3>
+
+<p>Read 是精确读取工具。当你已经知道要看哪个文件时，Read 让你读取全部或部分内容。</p>
+
+<pre><code>{`// 读取整个文件
+Read("src/services/user-service.ts")
+→ (返回文件全部内容)
+
+// 只读取特定行范围（大文件时非常有用）
+Read("src/services/user-service.ts", offset=100, limit=50)
+→ (返回第 100-150 行)`}</code></pre>
+
+<h3>搜索管道</h3>
+
+<p>这三个工具形成了一个从广到窄的搜索管道：</p>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────────────────┐
+  │              Search Pipeline                         │
+  │                                                      │
+  │  ┌─────────┐    ┌─────────┐    ┌─────────┐          │
+  │  │  Glob   │───▶│  Grep   │───▶│  Read   │          │
+  │  │         │    │         │    │         │          │
+  │  │ 找到文件 │    │ 定位代码 │    │ 读取细节 │          │
+  │  └─────────┘    └─────────┘    └─────────┘          │
+  │                                                      │
+  │  广度优先         精确定位         深度理解            │
+  │  "有哪些文件？"   "关键词在哪？"   "代码长什么样？"    │
+  │                                                      │
+  │  示例:                                               │
+  │  Glob("src/services/**")                             │
+  │    → 发现 user-service.ts, auth-service.ts, ...      │
+  │  Grep("deleteUser", "src/services/")                 │
+  │    → 发现 user-service.ts:89                         │
+  │  Read("src/services/user-service.ts", offset=80)     │
+  │    → 读取 deleteUser 方法的完整实现                    │
+  └─────────────────────────────────────────────────────┘
+`}</div>
+
+<h2>Agentic RAG：智能体驱动的检索</h2>
+
+<p>传统的 RAG（检索增强生成）系统通常依赖<strong>向量嵌入</strong>：把代码块转换成向量，存入向量数据库，然后通过语义相似度搜索。但 Claude Code 不使用这种方法。</p>
+
+<p>Claude Code 采用的是一种<strong>工具驱动的检索方式</strong>，我们称之为 "Agentic RAG"——AI 自己决定搜什么、怎么搜、搜多深。这不是预先建好索引然后查询，而是<strong>实时的、动态的、多步骤的探索</strong>。</p>
+
+<p>让我们看一个完整的示例。当用户说 "帮我给 UserService 添加一个批量删除用户的方法" 时，Claude 的搜索过程是这样的：</p>
+
+<pre><code>{`用户: "帮我给 UserService 添加一个批量删除用户的方法"
+
+Step 1: 理解任务，定位目标文件
+  Claude 思考: "我需要找到 UserService 的定义"
+  → Grep("class UserService")
+  → 结果: src/services/user-service.ts:15
+
+Step 2: 阅读现有代码，理解模式
+  Claude 思考: "我需要了解现有方法的风格"
+  → Read("src/services/user-service.ts")
+  → 发现: 有 deleteUser(id) 方法，使用 Repository 模式
+
+Step 3: 追踪依赖，理解数据层
+  Claude 思考: "deleteUser 调用了 UserRepository，我需要看看它的接口"
+  → Grep("class UserRepository")
+  → 结果: src/repositories/user-repository.ts:8
+  → Read("src/repositories/user-repository.ts")
+  → 发现: Repository 有 deleteById 方法，但没有批量删除
+
+Step 4: 检查测试文件，了解测试规范
+  Claude 思考: "我应该看看现有测试的写法"
+  → Glob("**/*user-service*.test.*")
+  → 结果: src/__tests__/user-service.test.ts
+  → Read("src/__tests__/user-service.test.ts")
+  → 了解: 测试使用 Jest + mock Repository
+
+Step 5: 综合所有信息，开始编码
+  Claude 现在拥有足够的上下文:
+  - UserService 的结构和风格
+  - Repository 的接口和模式
+  - 测试的编写规范
+  → 编写 bulkDeleteUsers 方法
+  → 在 Repository 中添加 deleteByIds 方法
+  → 编写对应的测试`}</code></pre>
+
+<p>注意这个过程的关键特征：</p>
+
+<ul>
+<li><strong>目标驱动</strong>：每一步搜索都有明确的目的，不是随机浏览</li>
+<li><strong>迭代深入</strong>：从类定义到方法实现，从服务层到数据层，逐步深入</li>
+<li><strong>上下文积累</strong>：每次搜索的结果都为下一步决策提供信息</li>
+<li><strong>最小化加载</strong>：只读取真正需要的文件，不浪费上下文窗口</li>
+</ul>
+
+<p>这就是 "Agentic" 的含义——AI 不是被动地接收检索结果，而是<strong>主动地策划和执行搜索策略</strong>。</p>
+
+<h2>代码智能 / LSP</h2>
+
+<p>文本搜索很强大，但它有盲点。当你搜索 <code>handleClick</code> 时，你可能找到定义、调用、注释中的提及、甚至字符串中的巧合匹配。你需要的是<strong>语义级别的理解</strong>——什么是定义，什么是引用，变量的类型是什么。</p>
+
+<p>这就是 <strong>Language Server Protocol (LSP)</strong> 和代码智能工具发挥作用的地方。</p>
+
+<div class="chapter-article__ascii">{`
+  ┌────────────────────────────────────────────────────┐
+  │         文本搜索 vs 代码智能                         │
+  │                                                     │
+  │  文本搜索 (Grep)          代码智能 (LSP)             │
+  │  ┌──────────────────┐    ┌──────────────────┐      │
+  │  │ "找到所有包含      │    │ "找到这个符号的    │      │
+  │  │  handleClick      │    │  定义位置"         │      │
+  │  │  的文本行"         │    │                   │      │
+  │  │                   │    │ "找到所有引用      │      │
+  │  │ ✗ 无法区分定义    │    │  这个函数的地方"   │      │
+  │  │   和调用          │    │                   │      │
+  │  │ ✗ 无法理解类型    │    │ "这个变量的        │      │
+  │  │ ✗ 会匹配注释和   │    │  类型是什么？"     │      │
+  │  │   字符串          │    │                   │      │
+  │  │                   │    │ ✓ 精确的语义理解   │      │
+  │  └──────────────────┘    └──────────────────┘      │
+  └────────────────────────────────────────────────────┘
+`}</div>
+
+<p>LSP 提供的能力包括：</p>
+
+<ul>
+<li><strong>Go to Definition</strong>：从函数调用跳转到函数定义。不再需要猜测 <code>handleSubmit</code> 定义在哪个文件。</li>
+<li><strong>Find References</strong>：找到一个符号被引用的所有位置。想知道 <code>UserService</code> 在哪些地方被使用？一个命令就能找到。</li>
+<li><strong>Type Information</strong>：了解变量和函数的类型。这对于理解代码接口至关重要。</li>
+<li><strong>Symbol Search</strong>：在整个项目中按符号名搜索，而非按文本搜索。</li>
+</ul>
+
+<p>在实践中，Claude Code 会将文本搜索和代码智能<strong>结合使用</strong>。文本搜索用于快速的广度扫描，代码智能用于精确的语义理解。两者互补，形成对代码库的全面认知。</p>
+
+<h2>上下文压缩（Context Compaction）</h2>
+
+<p>即使有了按需检索，长时间的对话仍然会耗尽上下文窗口。每次工具调用的结果、每次读取的文件内容，都在消耗宝贵的上下文空间。当对话足够长时，Claude Code 会触发<strong>上下文压缩</strong>。</p>
+
+<p>上下文压缩的工作方式：</p>
+
+<ol>
+<li><strong>检测</strong>：当上下文窗口使用率接近上限时，自动触发</li>
+<li><strong>摘要</strong>：将较早的对话消息进行智能摘要——保留关键信息（做了什么决策、修改了哪些文件、遇到了什么问题），去除冗余细节</li>
+<li><strong>替换</strong>：用摘要替换原始消息，释放上下文空间</li>
+<li><strong>继续</strong>：对话无缝继续，用户几乎感觉不到压缩的发生</li>
+</ol>
+
+<div class="chapter-article__ascii">{`
+  压缩前:
+  ┌──────────────────────────────────────────┐
+  │ Msg 1: 用户请求修复 bug                   │
+  │ Msg 2: Claude 搜索代码 (大量工具结果)       │
+  │ Msg 3: Claude 读取 5 个文件 (大量文件内容)  │
+  │ Msg 4: Claude 提出修复方案                 │
+  │ Msg 5: 用户确认方案                        │
+  │ Msg 6: Claude 修改代码 (工具调用详情)       │
+  │ Msg 7: Claude 运行测试 (完整测试输出)       │
+  │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  80% 已使用       │
+  └──────────────────────────────────────────┘
+
+  压缩后:
+  ┌──────────────────────────────────────────┐
+  │ [摘要]: 用户请求修复登录页 bug。            │
+  │   已搜索代码库，修改了 auth-service.ts     │
+  │   和 login-form.tsx。测试全部通过。         │
+  │ Msg 8: 用户的新请求...                     │
+  │ ░░░░░░░░                     30% 已使用    │
+  └──────────────────────────────────────────┘
+`}</div>
+
+<p>上下文压缩就像人类做笔记：你不会记住对话中的每一个字，但你会记住关键结论和决策。这让 Claude Code 能够在长时间的编码会话中保持高效运转。</p>
+
+<h2>实战中的搜索策略</h2>
+
+<p>了解了工具之后，让我们看看 Claude Code 在实际场景中是如何组合运用这些搜索策略的。</p>
+
+<h3>策略一：从广到窄</h3>
+
+<p>这是最常见的模式。先用 Glob 获得全局视图，再用 Grep 精确定位，最后用 Read 深入理解。</p>
+
+<pre><code>{`// 任务: "重构项目中所有的 API 调用"
+
+// 第一步: 广度扫描——找到所有可能相关的文件
+Glob("src/**/*api*")
+Glob("src/**/*service*")
+Glob("src/**/*fetch*")
+
+// 第二步: 精确定位——搜索具体的 API 调用模式
+Grep("fetch\\(|axios\\.|api\\.get|api\\.post", "src/")
+
+// 第三步: 深入理解——读取关键文件
+Read("src/lib/api-client.ts")      // API 客户端的封装
+Read("src/services/user-api.ts")   // 典型的 API 服务`}</code></pre>
+
+<h3>策略二：文件名即信号</h3>
+
+<p>好的项目结构本身就是最好的文档。文件名和目录结构包含了丰富的语义信息。</p>
+
+<pre><code>{`// 要找数据库相关代码？
+Glob("**/*database*")
+Glob("**/*migration*")
+Glob("**/prisma/**")
+Glob("**/schema*")
+
+// 要找认证相关代码？
+Glob("**/*auth*")
+Glob("**/*login*")
+Glob("**/*session*")
+Glob("**/middleware/*")`}</code></pre>
+
+<h3>策略三：追踪 import 链</h3>
+
+<p>代码之间的依赖关系形成了一张图。沿着 import 语句追踪，可以发现所有相关模块。</p>
+
+<pre><code>{`// 从入口点开始
+Read("src/pages/dashboard.tsx")
+→ 发现 import { UserCard } from '../components/UserCard'
+
+Read("src/components/UserCard.tsx")
+→ 发现 import { useUser } from '../hooks/useUser'
+
+Read("src/hooks/useUser.ts")
+→ 发现 import { UserService } from '../services/user-service'
+
+// 现在你理解了整个依赖链:
+// 页面 → 组件 → Hook → 服务`}</code></pre>
+
+<h3>策略四：测试文件即使用手册</h3>
+
+<p>测试文件是理解一个模块如何使用的最佳文档。它们包含了具体的输入输出示例和边界条件。</p>
+
+<pre><code>{`// 不确定某个函数怎么用？先找它的测试
+Glob("**/*user-service*.test.*")
+Read("src/__tests__/user-service.test.ts")
+
+// 测试文件告诉你:
+// - 函数的输入参数是什么
+// - 预期的返回值是什么
+// - 边界条件是什么
+// - 错误情况如何处理`}</code></pre>
+
+<p>这些策略不是孤立使用的——在一次真实的任务中，Claude 通常会灵活组合多种策略，就像一个有经验的开发者在新项目中快速建立认知一样。关键原则是：<strong>每一次搜索都有明确目的，每一次读取都在积累上下文</strong>。</p>
+
+</div>
+
+<div class="article-en">
+
+<h2>Why Not Load Everything?</h2>
+
+<p>An intuitive idea: since Claude needs to understand my codebase, why not just load all the code into the context window?</p>
+
+<p>The answer is: <strong>you can't</strong>. For three reasons:</p>
+
+<ul>
+<li><strong>Context window limits</strong>: Even with a 200K token context window, a mid-size project (100,000 lines of code) easily exceeds this limit. One line of code consumes roughly 3-5 tokens, so 100K lines means 300K-500K tokens — far beyond the context window capacity.</li>
+<li><strong>Cost is prohibitive</strong>: Every token has a cost. Loading the entire codebase means paying for irrelevant code on every conversation turn. If you just want to tweak a button's style, why pay for database migration scripts?</li>
+<li><strong>Noise drowns the signal</strong>: Even if it could fit, massive amounts of irrelevant code dilutes the truly important information. The model's ability to find key code in a sea of noise degrades sharply — this is the "needle in a haystack" problem.</li>
+</ul>
+
+<div class="chapter-article__ascii">{`
+  ┌──────────────────────────────────────────────────┐
+  │         Why Not Load Everything?                   │
+  │                                                    │
+  │  Codebase: 100,000 lines  ≈  300K-500K tokens     │
+  │  Context window: 200K tokens                       │
+  │                                                    │
+  │  ████████████████████████████████████  Codebase    │
+  │  ██████████████████                    Context     │
+  │                                                    │
+  │  Conclusion: It won't fit. Even if it did,         │
+  │  too much noise.                                   │
+  │  Strategy: On-demand retrieval, load only           │
+  │  relevant code.                                    │
+  └──────────────────────────────────────────────────┘
+`}</div>
+
+<p>So Claude Code employs a smarter strategy: <strong>on-demand retrieval</strong>. Instead of moving every book into the room, go to the library when needed, find that book, and turn to the right page.</p>
+
+<h2>The Search Toolkit: Glob, Grep, Read</h2>
+
+<p>Claude Code's core ability to understand codebases is built on three search tools. Each has its strengths, and used together they work like an experienced developer navigating a codebase.</p>
+
+<h3>Glob: Find Files by Pattern</h3>
+
+<p>Glob is a file path pattern-matching tool. When you know what type of file you're looking for but aren't sure where it lives, Glob is your first choice.</p>
+
+<pre><code>{`// Find all TypeScript files
+Glob("**/*.ts")
+→ src/index.ts, src/utils/helper.ts, src/services/user.ts, ...
+
+// Find all React components under components/
+Glob("src/components/**/*.tsx")
+→ src/components/Button.tsx, src/components/Modal.tsx, ...
+
+// Find all test files
+Glob("**/*.test.{ts,tsx}")
+→ src/__tests__/user.test.ts, src/components/Button.test.tsx, ...
+
+// Find config files
+Glob("*config*")
+→ tsconfig.json, tailwind.config.ts, vite.config.ts, ...`}</code></pre>
+
+<h3>Grep: Search File Contents</h3>
+
+<p>Grep is a content search tool with full regex support. When you know a keyword exists in the code but don't know which file, Grep is the weapon of choice.</p>
+
+<pre><code>{`// Find a class definition
+Grep("class UserService")
+→ src/services/user-service.ts:15: export class UserService {
+
+// Find all call sites of a function
+Grep("handleSubmit\\(")
+→ src/components/LoginForm.tsx:42: onClick={handleSubmit}
+→ src/components/RegisterForm.tsx:38: onSubmit={handleSubmit}
+
+// Find TODO comments
+Grep("TODO|FIXME|HACK")
+→ src/utils/cache.ts:23: // TODO: implement cache invalidation
+→ src/api/auth.ts:67: // FIXME: token refresh race condition`}</code></pre>
+
+<h3>Read: Read File Contents</h3>
+
+<p>Read is the precision tool. When you already know which file to examine, Read lets you view all or part of its contents.</p>
+
+<pre><code>{`// Read an entire file
+Read("src/services/user-service.ts")
+→ (returns full file contents)
+
+// Read only a specific line range (useful for large files)
+Read("src/services/user-service.ts", offset=100, limit=50)
+→ (returns lines 100-150)`}</code></pre>
+
+<h3>The Search Pipeline</h3>
+
+<p>These three tools form a broad-to-narrow search pipeline:</p>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────────────────┐
+  │              Search Pipeline                         │
+  │                                                      │
+  │  ┌─────────┐    ┌─────────┐    ┌─────────┐          │
+  │  │  Glob   │───▶│  Grep   │───▶│  Read   │          │
+  │  │         │    │         │    │         │          │
+  │  │ Find    │    │ Locate  │    │ Read    │          │
+  │  │ files   │    │ code    │    │ details │          │
+  │  └─────────┘    └─────────┘    └─────────┘          │
+  │                                                      │
+  │  Breadth-first    Precision       Deep                │
+  │  "What files      "Where is the   "What does the     │
+  │   exist?"          keyword?"       code look like?"   │
+  │                                                      │
+  │  Example:                                            │
+  │  Glob("src/services/**")                             │
+  │    → Found user-service.ts, auth-service.ts, ...     │
+  │  Grep("deleteUser", "src/services/")                 │
+  │    → Found user-service.ts:89                        │
+  │  Read("src/services/user-service.ts", offset=80)     │
+  │    → Read the full deleteUser implementation         │
+  └─────────────────────────────────────────────────────┘
+`}</div>
+
+<h2>Agentic RAG: Agent-Driven Retrieval</h2>
+
+<p>Traditional RAG (Retrieval-Augmented Generation) systems typically rely on <strong>vector embeddings</strong>: convert code chunks into vectors, store them in a vector database, then search by semantic similarity. Claude Code does not use this approach.</p>
+
+<p>Instead, Claude Code employs a <strong>tool-driven retrieval approach</strong> we call "Agentic RAG" — the AI itself decides what to search for, how to search, and how deep to go. This is not pre-built indexing followed by queries, but <strong>real-time, dynamic, multi-step exploration</strong>.</p>
+
+<p>Let's walk through a complete example. When the user says "Add a bulk delete users method to UserService," Claude's search process looks like this:</p>
+
+<pre><code>{`User: "Add a bulk delete users method to UserService"
+
+Step 1: Understand the task, locate the target file
+  Claude thinks: "I need to find the UserService definition"
+  → Grep("class UserService")
+  → Result: src/services/user-service.ts:15
+
+Step 2: Read existing code, understand patterns
+  Claude thinks: "I need to understand the style of existing methods"
+  → Read("src/services/user-service.ts")
+  → Found: has a deleteUser(id) method, uses Repository pattern
+
+Step 3: Trace dependencies, understand the data layer
+  Claude thinks: "deleteUser calls UserRepository, I need to check its interface"
+  → Grep("class UserRepository")
+  → Result: src/repositories/user-repository.ts:8
+  → Read("src/repositories/user-repository.ts")
+  → Found: Repository has deleteById method, but no bulk delete
+
+Step 4: Check test files, learn testing conventions
+  Claude thinks: "I should look at how existing tests are written"
+  → Glob("**/*user-service*.test.*")
+  → Result: src/__tests__/user-service.test.ts
+  → Read("src/__tests__/user-service.test.ts")
+  → Learned: Tests use Jest + mock Repository
+
+Step 5: Synthesize all information, start coding
+  Claude now has enough context:
+  - UserService structure and style
+  - Repository interface and patterns
+  - Testing conventions
+  → Write bulkDeleteUsers method
+  → Add deleteByIds to Repository
+  → Write corresponding tests`}</code></pre>
+
+<p>Note the key characteristics of this process:</p>
+
+<ul>
+<li><strong>Goal-driven</strong>: Every search has a clear purpose, nothing is random browsing</li>
+<li><strong>Iteratively deepening</strong>: From class definition to method implementation, from service layer to data layer, progressively deeper</li>
+<li><strong>Context accumulation</strong>: Each search result informs the next decision</li>
+<li><strong>Minimal loading</strong>: Only reads files that are truly needed, no wasted context window</li>
+</ul>
+
+<p>This is what "Agentic" means — the AI is not passively receiving retrieval results, but <strong>actively planning and executing search strategies</strong>.</p>
+
+<h2>Code Intelligence / LSP</h2>
+
+<p>Text search is powerful, but it has blind spots. When you search for <code>handleClick</code>, you might find the definition, call sites, mentions in comments, or even coincidental matches in strings. What you need is <strong>semantic-level understanding</strong> — what is a definition, what is a reference, what is a variable's type.</p>
+
+<p>This is where <strong>Language Server Protocol (LSP)</strong> and code intelligence tools come in.</p>
+
+<div class="chapter-article__ascii">{`
+  ┌────────────────────────────────────────────────────┐
+  │       Text Search vs Code Intelligence              │
+  │                                                     │
+  │  Text Search (Grep)        Code Intelligence (LSP)  │
+  │  ┌──────────────────┐    ┌──────────────────┐      │
+  │  │ "Find all lines   │    │ "Find where this  │      │
+  │  │  containing        │    │  symbol is         │      │
+  │  │  handleClick"      │    │  defined"          │      │
+  │  │                   │    │                   │      │
+  │  │ ✗ Can't tell      │    │ "Find all places  │      │
+  │  │   definition from │    │  that reference    │      │
+  │  │   call site       │    │  this function"    │      │
+  │  │ ✗ Can't           │    │                   │      │
+  │  │   understand types│    │ "What is this      │      │
+  │  │ ✗ Matches         │    │  variable's type?" │      │
+  │  │   comments and    │    │                   │      │
+  │  │   strings         │    │ ✓ Precise semantic │      │
+  │  │                   │    │   understanding    │      │
+  │  └──────────────────┘    └──────────────────┘      │
+  └────────────────────────────────────────────────────┘
+`}</div>
+
+<p>LSP provides capabilities including:</p>
+
+<ul>
+<li><strong>Go to Definition</strong>: Jump from a function call to its definition. No more guessing which file <code>handleSubmit</code> is defined in.</li>
+<li><strong>Find References</strong>: Find every location where a symbol is used. Want to know everywhere <code>UserService</code> is referenced? One command finds them all.</li>
+<li><strong>Type Information</strong>: Understand the types of variables and functions. This is essential for understanding code interfaces.</li>
+<li><strong>Symbol Search</strong>: Search across the entire project by symbol name, not by text.</li>
+</ul>
+
+<p>In practice, Claude Code <strong>combines text search and code intelligence</strong>. Text search handles fast, broad sweeps; code intelligence provides precise semantic understanding. They complement each other, forming a comprehensive picture of the codebase.</p>
+
+<h2>Context Compaction</h2>
+
+<p>Even with on-demand retrieval, long conversations still exhaust the context window. Every tool call result, every file read, consumes precious context space. When the conversation gets long enough, Claude Code triggers <strong>Context Compaction</strong>.</p>
+
+<p>How Context Compaction works:</p>
+
+<ol>
+<li><strong>Detection</strong>: Automatically triggers when context window usage approaches the limit</li>
+<li><strong>Summarization</strong>: Intelligently summarizes earlier conversation messages — retains key information (decisions made, files modified, problems encountered), removes redundant details</li>
+<li><strong>Replacement</strong>: Replaces original messages with summaries, freeing context space</li>
+<li><strong>Continuation</strong>: Conversation continues seamlessly — the user barely notices the compaction</li>
+</ol>
+
+<div class="chapter-article__ascii">{`
+  Before compaction:
+  ┌──────────────────────────────────────────┐
+  │ Msg 1: User requests bug fix              │
+  │ Msg 2: Claude searches code (large        │
+  │        tool results)                      │
+  │ Msg 3: Claude reads 5 files (large        │
+  │        file contents)                     │
+  │ Msg 4: Claude proposes fix                │
+  │ Msg 5: User approves                      │
+  │ Msg 6: Claude modifies code (tool calls)  │
+  │ Msg 7: Claude runs tests (full output)    │
+  │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  80% used         │
+  └──────────────────────────────────────────┘
+
+  After compaction:
+  ┌──────────────────────────────────────────┐
+  │ [Summary]: User requested login page bug  │
+  │   fix. Searched codebase, modified        │
+  │   auth-service.ts and login-form.tsx.     │
+  │   All tests passed.                       │
+  │ Msg 8: User's new request...              │
+  │ ░░░░░░░░                     30% used     │
+  └──────────────────────────────────────────┘
+`}</div>
+
+<p>Context Compaction is like a person taking notes: you don't remember every word of a conversation, but you remember the key conclusions and decisions. This allows Claude Code to keep working efficiently through long coding sessions.</p>
+
+<h2>Search Strategies in Practice</h2>
+
+<p>Now that we understand the tools, let's look at how Claude Code combines these search strategies in real-world scenarios.</p>
+
+<h3>Strategy 1: Broad to Narrow</h3>
+
+<p>This is the most common pattern. Start with Glob for a global view, narrow down with Grep, then deep-dive with Read.</p>
+
+<pre><code>{`// Task: "Refactor all API calls in the project"
+
+// Step 1: Broad sweep — find all potentially relevant files
+Glob("src/**/*api*")
+Glob("src/**/*service*")
+Glob("src/**/*fetch*")
+
+// Step 2: Precise targeting — search for specific API call patterns
+Grep("fetch\\(|axios\\.|api\\.get|api\\.post", "src/")
+
+// Step 3: Deep understanding — read key files
+Read("src/lib/api-client.ts")      // API client wrapper
+Read("src/services/user-api.ts")   // Typical API service`}</code></pre>
+
+<h3>Strategy 2: File Names as Signals</h3>
+
+<p>Good project structure is the best documentation. File names and directory structures contain rich semantic information.</p>
+
+<pre><code>{`// Looking for database-related code?
+Glob("**/*database*")
+Glob("**/*migration*")
+Glob("**/prisma/**")
+Glob("**/schema*")
+
+// Looking for auth-related code?
+Glob("**/*auth*")
+Glob("**/*login*")
+Glob("**/*session*")
+Glob("**/middleware/*")`}</code></pre>
+
+<h3>Strategy 3: Follow Import Chains</h3>
+
+<p>Dependencies between code form a graph. Following import statements reveals all related modules.</p>
+
+<pre><code>{`// Start from the entry point
+Read("src/pages/dashboard.tsx")
+→ Found: import { UserCard } from '../components/UserCard'
+
+Read("src/components/UserCard.tsx")
+→ Found: import { useUser } from '../hooks/useUser'
+
+Read("src/hooks/useUser.ts")
+→ Found: import { UserService } from '../services/user-service'
+
+// Now you understand the entire dependency chain:
+// Page → Component → Hook → Service`}</code></pre>
+
+<h3>Strategy 4: Test Files as Usage Manuals</h3>
+
+<p>Test files are the best documentation for understanding how a module is used. They contain concrete input/output examples and edge cases.</p>
+
+<pre><code>{`// Not sure how to use a function? Find its tests first
+Glob("**/*user-service*.test.*")
+Read("src/__tests__/user-service.test.ts")
+
+// Test files tell you:
+// - What the function's input parameters are
+// - What the expected return values are
+// - What the edge cases are
+// - How errors are handled`}</code></pre>
+
+<p>These strategies are not used in isolation — in a real task, Claude typically combines multiple strategies flexibly, much like an experienced developer rapidly building understanding in a new project. The key principle is: <strong>every search has a clear purpose, every read accumulates context</strong>.</p>
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/memory`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.6 Memory</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/hooks`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.8 Hooks</span>
+</a>
+</div>
+
+</div>

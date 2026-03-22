@@ -1,10 +1,588 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 10
+chapter: 11
 title: 'Agents & Subagents'
 subtitle: '分身术'
 ---
 
-import Ch10Scenes from '../../chapters/ch10/Ch10Scenes';
+import Ch11Scenes from '../../chapters/ch11/Ch11Scenes';
 
-<Ch10Scenes client:only="react" />
+<Ch11Scenes client:only="react" />
+
+<div class="chapter-article">
+
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 分身术：Agent 工具与子智能体
+
+到目前为止，我们讨论的一切都发生在一个单一的对话循环中——一个 Claude 实例在一个上下文窗口内思考、行动、观察。但当任务变得庞大而复杂时，一个智能体可能不够用。这就是**子智能体（Subagent）** 登场的时刻。
+
+### Agent 工具：召唤分身
+
+在 Claude Code 的工具集中，有一个特殊的工具叫做 `Agent`（也叫 `Task` 或 `Subagent`）。它的作用是：**启动一个全新的 Claude 实例**，拥有独立的上下文窗口和工具权限，去完成一个特定的子任务。
+
+<pre><code>{`// Agent 工具的核心参数
+{
+  "tool": "Agent",
+  "prompt": "搜索项目中所有使用了 deprecated API 的文件，列出文件路径和行号",
+  "allowedTools": ["Read", "Grep", "Glob", "Bash"]
+}`}</code></pre>
+
+当主智能体调用 Agent 工具时，系统会：
+
+1. **创建新的上下文窗口** —— 子智能体从空白开始，只接收主智能体传递的 prompt
+2. **分配工具权限** —— 子智能体只能使用被明确允许的工具
+3. **独立执行** —— 子智能体进入自己的 agentic loop，独立思考和行动
+4. **返回结果** —— 完成后，子智能体将结果汇报给主智能体
+
+### 为什么需要子智能体？
+
+你可能会问：为什么不让主智能体自己做所有事？答案涉及三个核心问题：
+
+**上下文隔离**。每个子智能体有自己的上下文窗口。当你需要搜索一个大型代码库时，搜索过程会产生大量中间结果——文件内容、grep 输出、错误信息。如果这些都堆积在主智能体的上下文中，很快就会占满窗口。子智能体处理完这些细节后，只需返回一个简洁的摘要。
+
+**并行执行**。多个子智能体可以同时工作。想象你需要同时重构三个独立的模块——三个子智能体可以并行处理，而不是串行地一个接一个。
+
+**专注与专业化**。每个子智能体只关注一个明确的任务。这种专注让它们更少犯错，因为上下文中没有无关的干扰信息。
+
+### 内置的智能体类型
+
+Claude Code 提供了几种预设的智能体模式：
+
+**通用子智能体（General-purpose）**。默认模式，拥有完整的工具集，可以处理任何类型的任务。适合需要读写文件、执行命令的复合任务。
+
+**探索智能体（Explore）**。专门用于代码库搜索和理解。它被赋予 `Read`、`Grep`、`Glob` 等只读工具，擅长回答「这个函数在哪里定义的？」「哪些文件依赖了这个模块？」之类的问题。
+
+**规划智能体（Plan）**。专注于架构分析和方案设计。它可以阅读代码、理解结构，但不会做任何修改。适合在执行前先理清思路。
+
+### 子智能体的工作机制
+
+让我们更深入地看看子智能体的生命周期：
+
+<pre><code>{`主智能体的上下文窗口
+┌─────────────────────────────────────────┐
+│ 用户: "重构 auth 模块并更新所有测试"      │
+│                                         │
+│ 思考: 这个任务可以分解为两个独立子任务...   │
+│                                         │
+│ 调用 Agent("分析 auth 模块的当前结构")     │
+│       ↓                                 │
+│ 调用 Agent("找到所有 auth 相关的测试文件") │
+│       ↓                                 │
+│ [等待两个子智能体返回结果...]              │
+│                                         │
+│ 收到结果 → 制定重构计划 → 执行修改         │
+└─────────────────────────────────────────┘`}</code></pre>
+
+每个子智能体内部发生的事：
+
+<pre><code>{`子智能体的上下文窗口（独立的、隔离的）
+┌─────────────────────────────────────────┐
+│ System: 你是一个子智能体。任务如下...       │
+│ Prompt: "分析 auth 模块的当前结构"         │
+│                                         │
+│ 思考 → Glob("src/auth/**") → 读取文件     │
+│      → 分析依赖关系 → 整理结构图            │
+│                                         │
+│ 返回: "auth 模块包含 5 个文件，核心入口     │
+│        是 auth.ts，依赖 jwt.ts 和..."      │
+└─────────────────────────────────────────┘`}</code></pre>
+
+关键点：子智能体的中间过程（它读了哪些文件、做了多少次搜索）**不会**进入主智能体的上下文。主智能体只看到最终的结果摘要。
+
+### Context 隔离：单向通信
+
+子智能体的通信模型是严格的**单向通信**：主智能体发送 prompt，子智能体返回 result。没有双向通信，没有中间状态共享，没有"对话"。
+
+具体来说：
+
+- **子智能体看不到主智能体的上下文**——它不知道用户说了什么、之前的对话历史是什么、其他工具返回了什么结果
+- **子智能体之间无法通信**——Subagent A 不知道 Subagent B 的存在，更不可能给它发消息
+- **主智能体只收到最终文本**——子智能体内部的工具调用、推理过程、中间结果全部被丢弃
+
+<div class="chapter-article__ascii">
+<pre>{`
+┌─────────────────────────────────────────────┐
+│  主 Agent Context                            │
+│  ┌─────────────────────────────────────┐    │
+│  │ 用户消息、对话历史、工具结果...        │    │
+│  │                                     │    │
+│  │  prompt ──────▶ ┌──────────────┐    │    │
+│  │                 │  Subagent A  │    │    │
+│  │                 │  独立 context │    │    │
+│  │  result ◀────── │  看不到主 ctx │    │    │
+│  │                 └──────────────┘    │    │
+│  │                                     │    │
+│  │  prompt ──────▶ ┌──────────────┐    │    │
+│  │                 │  Subagent B  │    │    │
+│  │  result ◀────── │  独立 context │    │    │
+│  │                 └──────────────┘    │    │
+│  │                                     │    │
+│  │  ⚠️ A 和 B 之间无法通信              │    │
+│  └─────────────────────────────────────┘    │
+└─────────────────────────────────────────────┘
+`}</pre>
+</div>
+
+这种设计有三个关键含义：
+
+**Prompt 是唯一的输入。** Subagent 收到的只有 system prompt + 你传递的 prompt 文本。它不知道用户是谁，不知道之前的对话，不知道其他 subagent 的存在。
+
+**Result 是唯一的输出。** 主 agent 只收到一段文本结果。Subagent 内部读了多少文件、调了多少工具、走了多少弯路——全部被丢弃，主 agent 无从得知。
+
+**这就是为什么 prompt 质量至关重要。** 你给 subagent 的 prompt 必须包含它需要知道的**一切**上下文信息，因为它无法从别处获取。一个模糊的 prompt 会导致 subagent 盲目行动；一个精确的 prompt 则能让它高效完成任务。
+
+### Subagent vs Multi-Agent Team
+
+Claude Code 采用的是 **Subagent 模式**，但这并非唯一的多智能体架构。让我们对比两种不同的方式：
+
+**1. Subagent 模式（Claude Code 当前的方式）**
+
+星型拓扑结构。所有通信必须经过主 agent，子智能体之间无法直接通信。主 agent 是唯一的协调者和信息枢纽。适合任务可以分解为**独立子任务**的场景。
+
+**2. Multi-Agent Team 模式（未来方向 / 其他框架）**
+
+网状拓扑结构。Agent 之间可以互相通信、共享状态或传递消息。协调可以是去中心化的，每个 agent 都可以主动发起协作。适合需要多个 agent **紧密协作**完成的复杂任务。
+
+<div class="chapter-article__ascii">
+<pre>{`
+Subagent 模式 (星型)          Multi-Agent Team (网状)
+
+     ┌───┐                         ┌───┐
+     │ A │                         │ A │◄──────┐
+     └─┬─┘                         └─┬─┘      │
+       │                              │        │
+  ┌────┴────┐                    ┌────┴────┐   │
+  │  Main   │                    │  Main   │   │
+  └────┬────┘                    └────┬────┘   │
+       │                              │        │
+     ┌─┴─┐                         ┌─┴─┐      │
+     │ B │                         │ B │───────┘
+     └───┘                         └───┘
+
+A ↔ Main ↔ B                  A ↔ Main ↔ B
+A ✗ B (不能通信)               A ↔ B (可以通信)
+`}</pre>
+</div>
+
+Claude Code 选择 Subagent 模式是一个深思熟虑的设计决策。原因如下：
+
+- **更容易推理**：星型拓扑意味着所有信息流都经过一个中心点，没有复杂的多方协调问题，不会出现 agent 之间互相误解的"电话游戏"
+- **Context 隔离防止"污染"**：每个 subagent 的上下文是干净的，不会被其他 agent 的中间状态干扰，这让每个子任务的执行更加可靠
+- **主 agent 保持清晰的全局视野**：因为所有结果都汇聚到主 agent，它始终拥有最完整的全局信息，能做出更好的协调决策
+- **更容易调试**：出问题时，责任链是清晰的——是主 agent 的 prompt 写得不好？还是 subagent 的执行有误？星型结构让这种排查变得简单
+
+### 并行执行
+
+多个子智能体可以同时运行，这是一个巨大的效率提升：
+
+<pre><code>{`主智能体
+    │
+    ├──→ 子智能体 A: "重构 auth 模块"
+    │
+    ├──→ 子智能体 B: "重构 database 模块"
+    │
+    └──→ 子智能体 C: "更新 API 文档"
+
+    [三个子智能体同时工作]
+
+    ←── A 完成: "auth 模块已重构，改动 3 个文件"
+    ←── B 完成: "database 模块已重构，改动 5 个文件"
+    ←── C 完成: "API 文档已更新，新增 2 个接口描述"
+
+    主智能体: 汇总结果，检查一致性`}</code></pre>
+
+这种模式特别适合：
+- 独立模块的并行重构
+- 同时搜索多个不相关的信息
+- 并行执行多个独立的测试或验证任务
+
+### 自定义智能体
+
+你可以定义自己的智能体类型，通过系统提示和工具限制来定制它们的行为：
+
+<pre><code>{`// 在 settings.json 中定义自定义智能体
+{
+  "agents": {
+    "security-reviewer": {
+      "systemPrompt": "你是一个安全审计专家。检查代码中的安全漏洞，包括 SQL 注入、XSS、敏感信息泄露等。",
+      "allowedTools": ["Read", "Grep", "Glob"],
+      "model": "claude-sonnet-4-20250514"
+    },
+    "test-writer": {
+      "systemPrompt": "你是一个测试工程师。为给定的代码编写全面的单元测试。",
+      "allowedTools": ["Read", "Write", "Grep", "Glob", "Bash"],
+      "model": "claude-sonnet-4-20250514"
+    }
+  }
+}`}</code></pre>
+
+通过自定义智能体，你可以建立一个**专家团队**——安全审计、测试编写、文档生成、性能分析——每个角色都有明确的职责和权限边界。
+
+### Worktree 隔离
+
+当多个子智能体需要同时修改代码时，会出现一个问题：它们可能会互相冲突。一个智能体在修改 `auth.ts` 的同时，另一个也在修改它。
+
+解决方案是 **Git Worktree 隔离**：
+
+<pre><code>{`项目目录: /project
+    │
+    ├── /project (主 worktree - 主智能体)
+    │
+    ├── /project-worktree-1 (子智能体 A)
+    │   └── 独立的工作副本
+    │
+    └── /project-worktree-2 (子智能体 B)
+        └── 独立的工作副本`}</code></pre>
+
+每个子智能体在自己的 worktree 中工作，互不干扰。完成后，主智能体可以将各个 worktree 的改动合并回主分支。这就像每个分身都在自己的平行世界中工作，最后再把结果汇总到一起。
+
+### 层级结构：主智能体指挥，子智能体执行
+
+<div class="chapter-article__ascii">
+<pre>{`
+                    ┌──────────────┐
+                    │   主智能体    │
+                    │  (指挥官)     │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+        ┌─────┴─────┐ ┌───┴────┐ ┌────┴─────┐
+        │ 探索智能体 │ │ 执行者 │ │ 审查智能体│
+        │  (侦察兵)  │ │ (工兵) │ │  (质检)  │
+        └───────────┘ └────────┘ └──────────┘
+              │                       │
+         搜索代码库              检查代码质量
+         分析依赖关系            验证测试覆盖
+         返回情报                返回审查报告
+`}</pre>
+</div>
+
+主智能体的角色是**指挥官**：
+- 理解用户的高层意图
+- 将复杂任务分解为子任务
+- 分配子智能体去执行
+- 汇总结果并做出最终决策
+- 处理子智能体之间的协调
+
+子智能体的角色是**执行者**：
+- 专注于单一明确的任务
+- 在隔离的上下文中高效工作
+- 返回简洁的结果摘要
+- 不需要了解全局
+
+### 何时使用子智能体？
+
+**适合使用子智能体的场景：**
+- 任务可以明确分解为独立子任务
+- 需要搜索大量代码但只需要摘要结果
+- 多个独立任务可以并行执行
+- 任务涉及大量中间数据，不需要保留在主上下文中
+
+**不适合使用子智能体的场景：**
+- 任务简单，直接做比分解更快
+- 子任务之间有强依赖，无法独立执行
+- 需要持续的上下文共享（子智能体之间无法直接通信）
+- 结果需要精确的上下文理解，而不是摘要
+
+记住：子智能体不是免费的。每个子智能体都会消耗额外的 token，创建和等待子智能体也需要时间。好的指挥官知道何时派出分身，何时亲自上阵。
+
+</div>
+
+<div class="article-en">
+
+## The Art of Cloning: The Agent Tool and Subagents
+
+Everything we have discussed so far takes place inside a single conversation loop -- one Claude instance thinking, acting, and observing within a single context window. But when tasks grow large and complex, one agent may not be enough. This is where **subagents** enter the picture.
+
+### The Agent Tool: Summoning Clones
+
+Among Claude Code's tool set, there is a special tool called `Agent` (also referred to as `Task` or `Subagent`). Its purpose is to **spawn a brand-new Claude instance** with its own independent context window and tool permissions, dedicated to completing a specific subtask.
+
+<pre><code>{`// Core parameters of the Agent tool
+{
+  "tool": "Agent",
+  "prompt": "Search all files in the project that use deprecated APIs, list file paths and line numbers",
+  "allowedTools": ["Read", "Grep", "Glob", "Bash"]
+}`}</code></pre>
+
+When the main agent invokes the Agent tool, the system:
+
+1. **Creates a new context window** -- the subagent starts from scratch, receiving only the prompt passed by the main agent
+2. **Assigns tool permissions** -- the subagent can only use explicitly allowed tools
+3. **Executes independently** -- the subagent enters its own agentic loop, thinking and acting on its own
+4. **Returns results** -- once complete, the subagent reports its findings back to the main agent
+
+### Why Subagents?
+
+You might ask: why not let the main agent do everything itself? The answer involves three core concerns:
+
+**Context isolation.** Each subagent has its own context window. When you need to search a large codebase, the search process generates massive amounts of intermediate data -- file contents, grep output, error messages. If all of this piled up in the main agent's context, it would fill the window quickly. A subagent processes these details and returns only a concise summary.
+
+**Parallel execution.** Multiple subagents can work simultaneously. Imagine needing to refactor three independent modules at once -- three subagents can process them in parallel rather than one after another.
+
+**Focus and specialization.** Each subagent concentrates on a single, well-defined task. This focus reduces errors because there is no irrelevant information cluttering the context.
+
+### Built-in Agent Types
+
+Claude Code provides several preset agent modes:
+
+**General-purpose subagent.** The default mode with a full tool set, capable of handling any type of task. Suitable for compound tasks requiring file reading, writing, and command execution.
+
+**Explore agent.** Specialized for codebase search and comprehension. It is given read-only tools like `Read`, `Grep`, and `Glob`, and excels at answering questions like "Where is this function defined?" or "Which files depend on this module?"
+
+**Plan agent.** Focused on architecture analysis and solution design. It can read code and understand structure but will not make any modifications. Ideal for thinking through an approach before execution.
+
+### How Subagents Work
+
+Let us look more closely at a subagent's lifecycle:
+
+<pre><code>{`Main agent's context window
+┌─────────────────────────────────────────────┐
+│ User: "Refactor the auth module and update   │
+│        all tests"                            │
+│                                              │
+│ Thinking: This can be split into two         │
+│           independent subtasks...            │
+│                                              │
+│ Call Agent("Analyze current auth structure")  │
+│       ↓                                      │
+│ Call Agent("Find all auth-related tests")     │
+│       ↓                                      │
+│ [Waiting for both subagents to return...]     │
+│                                              │
+│ Results received → Plan refactor → Execute    │
+└─────────────────────────────────────────────┘`}</code></pre>
+
+Inside each subagent:
+
+<pre><code>{`Subagent's context window (independent, isolated)
+┌─────────────────────────────────────────────┐
+│ System: You are a subagent. Your task is...  │
+│ Prompt: "Analyze current auth structure"     │
+│                                              │
+│ Think → Glob("src/auth/**") → Read files     │
+│       → Analyze dependencies → Build map     │
+│                                              │
+│ Return: "Auth module has 5 files, entry      │
+│          point is auth.ts, depends on        │
+│          jwt.ts and..."                      │
+└─────────────────────────────────────────────┘`}</code></pre>
+
+The key insight: a subagent's intermediate steps (which files it read, how many searches it ran) **never enter** the main agent's context. The main agent sees only the final summary.
+
+### Context Isolation: One-Way Communication
+
+The subagent communication model is strictly **one-way**: the main agent sends a prompt, the subagent returns a result. There is no bidirectional communication, no shared intermediate state, no "conversation."
+
+Specifically:
+
+- **The subagent cannot see the main agent's context** -- it does not know what the user said, what the conversation history looks like, or what other tools returned
+- **Subagents cannot communicate with each other** -- Subagent A has no idea Subagent B exists, let alone send it a message
+- **The main agent receives only the final text** -- the subagent's internal tool calls, reasoning process, and intermediate results are all discarded
+
+<div class="chapter-article__ascii">
+<pre>{`
+┌─────────────────────────────────────────────┐
+│  Main Agent Context                          │
+│  ┌─────────────────────────────────────┐    │
+│  │ User messages, history, tool results │    │
+│  │                                     │    │
+│  │  prompt ──────▶ ┌──────────────┐    │    │
+│  │                 │  Subagent A  │    │    │
+│  │                 │  own context │    │    │
+│  │  result ◀────── │  no main ctx │    │    │
+│  │                 └──────────────┘    │    │
+│  │                                     │    │
+│  │  prompt ──────▶ ┌──────────────┐    │    │
+│  │                 │  Subagent B  │    │    │
+│  │  result ◀────── │  own context │    │    │
+│  │                 └──────────────┘    │    │
+│  │                                     │    │
+│  │  ⚠️ A and B cannot communicate      │    │
+│  └─────────────────────────────────────┘    │
+└─────────────────────────────────────────────┘
+`}</pre>
+</div>
+
+This design has three critical implications:
+
+**The prompt is the only input.** A subagent receives nothing but a system prompt and the prompt text you pass to it. It does not know who the user is, what the prior conversation contained, or that other subagents exist.
+
+**The result is the only output.** The main agent receives a single text result. How many files the subagent read, how many tools it called, how many wrong turns it took -- all of that is discarded. The main agent has no way of knowing.
+
+**This is why prompt quality is paramount.** The prompt you give a subagent must contain **all** the context it needs, because it has no other way to obtain it. A vague prompt leads to a subagent stumbling in the dark; a precise prompt enables efficient, targeted execution.
+
+### Subagent vs Multi-Agent Team
+
+Claude Code uses the **Subagent pattern**, but this is not the only multi-agent architecture. Let us compare two different approaches:
+
+**1. Subagent Pattern (Claude Code's current approach)**
+
+Star topology. All communication must pass through the main agent; subagents cannot communicate directly with each other. The main agent is the sole coordinator and information hub. Best suited for tasks that can be decomposed into **independent subtasks**.
+
+**2. Multi-Agent Team Pattern (future direction / other frameworks)**
+
+Mesh topology. Agents can communicate with each other, share state, or pass messages directly. Coordination can be decentralized, with each agent capable of initiating collaboration. Best suited for complex tasks that require agents to **collaborate closely**.
+
+<div class="chapter-article__ascii">
+<pre>{`
+Subagent Pattern (Star)       Multi-Agent Team (Mesh)
+
+     ┌───┐                         ┌───┐
+     │ A │                         │ A │◄──────┐
+     └─┬─┘                         └─┬─┘      │
+       │                              │        │
+  ┌────┴────┐                    ┌────┴────┐   │
+  │  Main   │                    │  Main   │   │
+  └────┬────┘                    └────┬────┘   │
+       │                              │        │
+     ┌─┴─┐                         ┌─┴─┐      │
+     │ B │                         │ B │───────┘
+     └───┘                         └───┘
+
+A ↔ Main ↔ B                  A ↔ Main ↔ B
+A ✗ B (cannot communicate)    A ↔ B (can communicate)
+`}</pre>
+</div>
+
+Claude Code's choice of the Subagent pattern is a deliberate design decision. Here is why:
+
+- **Easier to reason about**: Star topology means all information flows through a single central point. There are no complex multi-party coordination problems, no "telephone game" where agents misinterpret each other
+- **Context isolation prevents "pollution"**: Each subagent's context is clean, uncontaminated by other agents' intermediate state, making each subtask's execution more reliable
+- **The main agent maintains a clear global view**: Because all results converge at the main agent, it always holds the most complete global picture and can make better coordination decisions
+- **Easier to debug**: When something goes wrong, the chain of responsibility is clear -- was the main agent's prompt poorly written, or did the subagent execute incorrectly? Star topology makes this investigation straightforward
+
+### Parallel Execution
+
+Multiple subagents can run simultaneously, providing a massive efficiency boost:
+
+<pre><code>{`Main Agent
+    │
+    ├──→ Subagent A: "Refactor auth module"
+    │
+    ├──→ Subagent B: "Refactor database module"
+    │
+    └──→ Subagent C: "Update API docs"
+
+    [All three working simultaneously]
+
+    ←── A done: "Auth refactored, 3 files changed"
+    ←── B done: "Database refactored, 5 files changed"
+    ←── C done: "API docs updated, 2 new endpoints"
+
+    Main Agent: Consolidate results, check consistency`}</code></pre>
+
+This pattern is especially useful for:
+- Parallel refactoring of independent modules
+- Searching for multiple unrelated pieces of information simultaneously
+- Running multiple independent tests or validation tasks in parallel
+
+### Custom Agents
+
+You can define your own agent types by customizing their behavior through system prompts and tool restrictions:
+
+<pre><code>{`// Define custom agents in settings.json
+{
+  "agents": {
+    "security-reviewer": {
+      "systemPrompt": "You are a security audit expert. Check code for vulnerabilities including SQL injection, XSS, sensitive data exposure, etc.",
+      "allowedTools": ["Read", "Grep", "Glob"],
+      "model": "claude-sonnet-4-20250514"
+    },
+    "test-writer": {
+      "systemPrompt": "You are a test engineer. Write comprehensive unit tests for the given code.",
+      "allowedTools": ["Read", "Write", "Grep", "Glob", "Bash"],
+      "model": "claude-sonnet-4-20250514"
+    }
+  }
+}`}</code></pre>
+
+With custom agents, you can build a **team of specialists** -- security auditing, test writing, documentation generation, performance analysis -- each with clear responsibilities and permission boundaries.
+
+### Worktree Isolation
+
+When multiple subagents need to modify code simultaneously, a problem arises: they might conflict with each other. One agent editing `auth.ts` while another also modifies it.
+
+The solution is **Git Worktree isolation**:
+
+<pre><code>{`Project directory: /project
+    │
+    ├── /project (main worktree - main agent)
+    │
+    ├── /project-worktree-1 (Subagent A)
+    │   └── independent working copy
+    │
+    └── /project-worktree-2 (Subagent B)
+        └── independent working copy`}</code></pre>
+
+Each subagent works in its own worktree without interference. Once complete, the main agent can merge changes from each worktree back to the main branch. It is like each clone working in its own parallel universe, with results consolidated at the end.
+
+### Hierarchy: The Main Agent Orchestrates, Subagents Execute
+
+<div class="chapter-article__ascii">
+<pre>{`
+                    ┌──────────────┐
+                    │  Main Agent  │
+                    │ (Commander)  │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+        ┌─────┴─────┐ ┌───┴────┐ ┌────┴──────┐
+        │  Explore   │ │Execute │ │  Review   │
+        │  (Scout)   │ │(Worker)│ │ (Auditor) │
+        └───────────┘ └────────┘ └───────────┘
+              │                       │
+         Search codebase         Check quality
+         Analyze deps            Verify coverage
+         Return intel            Return report
+`}</pre>
+</div>
+
+The main agent's role is **commander**:
+- Understand the user's high-level intent
+- Decompose complex tasks into subtasks
+- Dispatch subagents for execution
+- Consolidate results and make final decisions
+- Handle coordination between subagents
+
+The subagent's role is **executor**:
+- Focus on a single, well-defined task
+- Work efficiently in an isolated context
+- Return a concise result summary
+- No need to understand the big picture
+
+### When to Use Subagents
+
+**Good candidates for subagents:**
+- Tasks that can be clearly decomposed into independent subtasks
+- Searching large codebases where only a summary is needed
+- Multiple independent tasks that can run in parallel
+- Tasks involving large intermediate data that should not be kept in the main context
+
+**Not ideal for subagents:**
+- Simple tasks where doing it directly is faster than decomposing
+- Subtasks with strong dependencies that cannot execute independently
+- Situations requiring continuous context sharing (subagents cannot communicate directly with each other)
+- Results requiring precise contextual understanding rather than summaries
+
+Remember: subagents are not free. Each subagent consumes additional tokens, and creating and waiting for subagents takes time. A good commander knows when to send out clones and when to handle things personally.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/plugins`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.10 Plugins</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/permissions`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.12 Permissions & Safety</span>
+</a>
+</div>
+
+</div>

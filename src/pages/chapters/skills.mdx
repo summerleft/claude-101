@@ -1,10 +1,433 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 8
+chapter: 9
 title: 'Skills'
 subtitle: '可复用的超能力'
 ---
 
-import Ch08Scenes from '../../chapters/ch08/Ch08Scenes';
+import Ch09Scenes from '../../chapters/ch09/Ch09Scenes';
 
-<Ch08Scenes client:only="react" />
+<Ch09Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## Skills：可复用的提示模板
+
+**Skills**（也叫 Slash Commands）是 Claude Code 中可复用的提示模板系统。它们本质上是存储在特定目录下的 Markdown 文件，当用户通过 `/skill-name` 语法调用时，其内容会被加载到 Claude 的上下文中，引导 Claude 按照预定义的工作流执行任务。
+
+如果说 CLAUDE.md 是"始终加载的背景知识"，那么 Skills 就是"按需调用的专业能力"。你不需要每次都重复描述复杂的工作流——只需定义一次，随时调用。
+
+### 调用方式
+
+在 Claude Code 中，你只需输入斜杠命令即可调用 Skill：
+
+<pre><code>{`> /commit
+> /review-pr 123
+> /deploy staging`}</code></pre>
+
+Claude Code 会查找对应的 Skill 文件，将其内容加载到上下文中，然后按照 Skill 中定义的指令执行。
+
+### Skill 文件结构
+
+Skill 文件是带有特定结构的 Markdown 文件，存储在 `.claude/skills/` 目录下：
+
+<div class="chapter-article__ascii">
+{`.claude/
+  skills/
+    commit.md          # /commit 命令
+    review-pr.md       # /review-pr 命令
+    deploy.md          # /deploy 命令
+    refactor.md        # /refactor 命令`}
+</div>
+
+一个典型的 Skill 文件内容如下：
+
+<pre><code>{`# Commit Skill
+
+Review all staged changes using git diff --cached.
+
+Write a concise commit message following conventional commits format:
+- type(scope): description
+- Types: feat, fix, docs, style, refactor, test, chore
+
+Rules:
+- Keep the subject line under 72 characters
+- Use imperative mood ("add" not "added")
+- Include a body if the change is complex
+- Reference related issues if applicable
+
+After writing the message, create the commit.`}</code></pre>
+
+### 用户级 vs 项目级 Skills
+
+Skills 存在于两个层级：
+
+<div class="chapter-article__ascii">
+{`用户级 Skills（个人偏好）
+~/.claude/skills/
+  ├── my-commit.md
+  └── my-review.md
+
+项目级 Skills（团队共享）
+.claude/skills/
+  ├── deploy.md
+  ├── release.md
+  └── test-e2e.md`}
+</div>
+
+- **用户级**（`~/.claude/skills/`）：你个人的 Skills，在所有项目中可用。适合个人工作流偏好。
+- **项目级**（`.claude/skills/`）：提交到项目仓库，团队共享。适合项目特定的工作流。
+
+项目级 Skills 可以被版本控制，团队成员 pull 代码后即可使用相同的 Skills。
+
+### Skills vs CLAUDE.md
+
+理解两者的区别至关重要：
+
+<div class="chapter-article__ascii">
+{`┌──────────────┬────────────────────┬────────────────────┐
+│              │  CLAUDE.md         │  Skills            │
+├──────────────┼────────────────────┼────────────────────┤
+│  加载时机     │  始终自动加载       │  仅在调用时加载      │
+│  用途        │  项目背景、规范约定  │  具体任务工作流      │
+│  大小        │  应保持精简         │  可以很详细          │
+│  Context 开销 │  每次对话都占用     │  仅调用时占用        │
+└──────────────┴────────────────────┴────────────────────┘`}
+</div>
+
+CLAUDE.md 适合放项目约定、技术栈说明、代码规范等始终需要的信息。Skills 适合放具体的任务流程——部署流程、代码审查清单、发布流程等。
+
+### Skill 的参数传递
+
+Skills 可以接受参数。当你输入 `/review-pr 123` 时，`123` 会作为参数传递给 Skill。Skill 文件中可以引用这些参数：
+
+<pre><code>{`# Review PR Skill
+
+Fetch and review the pull request specified by the user.
+
+Steps:
+1. Use gh pr view with the provided PR number to get details
+2. Use gh pr diff to review the changes
+3. Check for:
+   - Code quality issues
+   - Missing tests
+   - Security concerns
+   - Documentation gaps
+4. Provide a structured review summary`}</code></pre>
+
+### 实战示例：Deploy Skill
+
+一个完整的部署 Skill 示例：
+
+<pre><code>{`# Deploy Skill
+
+Execute a full deployment pipeline for the specified environment.
+
+## Pre-deploy Checks
+1. Run the full test suite: npm test
+2. Run linting: npm run lint
+3. Ensure no uncommitted changes exist
+4. Verify the current branch is up to date with remote
+
+## Build
+1. Run the production build: npm run build
+2. Verify build output exists and is valid
+
+## Deploy
+1. Deploy to the specified environment using the deploy script
+2. Run: ./scripts/deploy.sh <environment>
+3. Wait for deployment to complete
+
+## Post-deploy Verification
+1. Run smoke tests against the deployed environment
+2. Check health endpoints
+3. Report deployment status
+
+If any step fails, stop immediately and report the error.
+Do NOT proceed with deployment if tests or build fail.`}</code></pre>
+
+### Skill 的加载机制
+
+#### ToolSearch 与延迟加载
+
+Skills 不是全部预加载到 context 的。Claude Code 启动时只加载 skill 的名称和描述（frontmatter 中的 `name` 和 `description`），完整内容是**延迟加载**的。当用户输入 `/skill-name` 或 AI 判断需要某个 skill 时，才通过 `ToolSearch` 工具获取完整定义。
+
+<div class="chapter-article__ascii">
+{`启动时:
+┌─────────────────────────────────────┐
+│  Skill Registry (轻量索引)            │
+│  ┌─────────┬────────────────────┐   │
+│  │ name    │ description        │   │
+│  ├─────────┼────────────────────┤   │
+│  │ commit  │ 生成规范的提交信息   │   │
+│  │ deploy  │ 执行部署流程        │   │
+│  │ review  │ 审查 PR 代码质量    │   │
+│  └─────────┴────────────────────┘   │
+│  完整 SKILL.md 内容未加载 → 节省 context │
+└─────────────────────────────────────┘
+
+调用时 (/deploy):
+┌──────────────┐     ┌──────────────────┐
+│ ToolSearch   │────▶│ 读取 deploy.md   │
+│ 匹配 "deploy"│     │ 注入完整内容      │
+└──────────────┘     └──────────────────┘
+                            │
+                     ┌──────▼──────────┐
+                     │ Context Window  │
+                     │ + deploy skill  │
+                     │   完整指令      │
+                     └─────────────────┘`}
+</div>
+
+当用户输入 `/commit` 时，Claude Code 并不是自己去读取文件——而是调用内部的 **Skill Tool**，由它负责查找、加载和注入 skill 内容。这个过程对用户是透明的。
+
+#### 自动召回机制
+
+除了手动 `/name` 调用，AI 还能自动匹配 skill。系统会将当前任务描述与所有 skill 的 description 做语义匹配。如果匹配度高，自动加载该 skill。这就是为什么 skill 的 `description` 字段非常重要——它决定了 AI 能否在正确的时机"想起"这个 skill。
+
+#### Skill Frontmatter
+
+每个 skill 文件的 YAML frontmatter 是召回的关键：
+
+<pre><code>{`---
+name: deploy
+description: Execute deployment pipeline with pre-checks, build, and verification
+---`}</code></pre>
+
+`name` 用于精确匹配（`/deploy`），`description` 用于语义匹配（AI 自主判断）。一个好的 description 应当准确描述 skill 的用途和适用场景，这样 AI 才能在用户描述相关任务时自动想到调用它。
+
+#### 加载 vs 执行
+
+Skill 的加载只是把 markdown 内容注入 context。AI 仍然需要理解并执行其中的指令。这意味着 skill 的质量直接影响执行效果——写得越清晰、越具体，AI 执行得越准确。
+
+这也意味着 Skill 本质上是一种**上下文注入**机制——它不改变 Claude 的能力，而是通过精心编写的提示来引导 Claude 的行为。
+
+### 编写高效 Skill 的建议
+
+- **明确步骤**：将任务分解为清晰的步骤，每步都有明确的操作。
+- **处理错误情况**：告诉 Claude 遇到失败时该怎么做。
+- **指定工具使用**：如果 Skill 需要使用特定工具（如 `gh`、`npm`），明确写出来。
+- **保持聚焦**：一个 Skill 解决一个问题，不要把无关的任务混在一起。
+- **利用项目上下文**：Skill 可以引用项目中的文件和配置，让指令更具体。
+
+</div>
+
+<div class="article-en">
+
+## Skills: Reusable Prompt Templates
+
+**Skills** (also called Slash Commands) are a reusable prompt template system in Claude Code. They are essentially Markdown files stored in specific directories. When invoked via `/skill-name` syntax, their content is loaded into Claude's context, guiding Claude to execute tasks according to predefined workflows.
+
+If CLAUDE.md is "always-loaded background knowledge," then Skills are "on-demand specialized capabilities." You don't need to repeat complex workflow descriptions every time — define once, invoke anytime.
+
+### Invocation
+
+In Claude Code, simply type a slash command to invoke a Skill:
+
+<pre><code>{`> /commit
+> /review-pr 123
+> /deploy staging`}</code></pre>
+
+Claude Code finds the corresponding Skill file, loads its content into context, and executes according to the instructions defined in the Skill.
+
+### Skill File Structure
+
+Skill files are Markdown files with a specific structure, stored in the `.claude/skills/` directory:
+
+<div class="chapter-article__ascii">
+{`.claude/
+  skills/
+    commit.md          # /commit command
+    review-pr.md       # /review-pr command
+    deploy.md          # /deploy command
+    refactor.md        # /refactor command`}
+</div>
+
+A typical Skill file looks like this:
+
+<pre><code>{`# Commit Skill
+
+Review all staged changes using git diff --cached.
+
+Write a concise commit message following conventional commits format:
+- type(scope): description
+- Types: feat, fix, docs, style, refactor, test, chore
+
+Rules:
+- Keep the subject line under 72 characters
+- Use imperative mood ("add" not "added")
+- Include a body if the change is complex
+- Reference related issues if applicable
+
+After writing the message, create the commit.`}</code></pre>
+
+### User-Level vs Project-Level Skills
+
+Skills exist at two levels:
+
+<div class="chapter-article__ascii">
+{`User-level Skills (personal preferences)
+~/.claude/skills/
+  ├── my-commit.md
+  └── my-review.md
+
+Project-level Skills (team-shared)
+.claude/skills/
+  ├── deploy.md
+  ├── release.md
+  └── test-e2e.md`}
+</div>
+
+- **User-level** (`~/.claude/skills/`): Your personal Skills, available across all projects. Ideal for personal workflow preferences.
+- **Project-level** (`.claude/skills/`): Committed to the project repository, shared with the team. Ideal for project-specific workflows.
+
+Project-level Skills can be version-controlled — team members can use the same Skills after pulling the code.
+
+### Skills vs CLAUDE.md
+
+Understanding the difference is crucial:
+
+<div class="chapter-article__ascii">
+{`┌──────────────┬────────────────────┬────────────────────┐
+│              │  CLAUDE.md         │  Skills            │
+├──────────────┼────────────────────┼────────────────────┤
+│  Loading     │  Always auto-loaded│  Loaded on invoke  │
+│  Purpose     │  Project context,  │  Specific task     │
+│              │  conventions       │  workflows         │
+│  Size        │  Keep concise      │  Can be detailed   │
+│  Context Cost│  Every conversation│  Only when invoked │
+└──────────────┴────────────────────┴────────────────────┘`}
+</div>
+
+CLAUDE.md is suited for project conventions, tech stack descriptions, and coding standards — information always needed. Skills are suited for specific task processes — deployment procedures, code review checklists, release workflows, and so on.
+
+### Passing Arguments to Skills
+
+Skills can accept arguments. When you type `/review-pr 123`, `123` is passed as an argument to the Skill. The Skill file can reference these arguments:
+
+<pre><code>{`# Review PR Skill
+
+Fetch and review the pull request specified by the user.
+
+Steps:
+1. Use gh pr view with the provided PR number to get details
+2. Use gh pr diff to review the changes
+3. Check for:
+   - Code quality issues
+   - Missing tests
+   - Security concerns
+   - Documentation gaps
+4. Provide a structured review summary`}</code></pre>
+
+### Example: Deploy Skill
+
+A complete deployment Skill example:
+
+<pre><code>{`# Deploy Skill
+
+Execute a full deployment pipeline for the specified environment.
+
+## Pre-deploy Checks
+1. Run the full test suite: npm test
+2. Run linting: npm run lint
+3. Ensure no uncommitted changes exist
+4. Verify the current branch is up to date with remote
+
+## Build
+1. Run the production build: npm run build
+2. Verify build output exists and is valid
+
+## Deploy
+1. Deploy to the specified environment using the deploy script
+2. Run: ./scripts/deploy.sh <environment>
+3. Wait for deployment to complete
+
+## Post-deploy Verification
+1. Run smoke tests against the deployed environment
+2. Check health endpoints
+3. Report deployment status
+
+If any step fails, stop immediately and report the error.
+Do NOT proceed with deployment if tests or build fail.`}</code></pre>
+
+### How Skills Are Loaded
+
+#### ToolSearch & Deferred Loading
+
+Skills are not all preloaded into context. When Claude Code starts, it only loads each skill's name and description (from the YAML frontmatter), while the full content is **deferred**. The complete skill definition is only fetched via the `ToolSearch` tool when the user types `/skill-name` or when the AI determines a skill is needed.
+
+<div class="chapter-article__ascii">
+{`At startup:
+┌─────────────────────────────────────┐
+│  Skill Registry (lightweight index)  │
+│  ┌─────────┬────────────────────┐   │
+│  │ name    │ description        │   │
+│  ├─────────┼────────────────────┤   │
+│  │ commit  │ Generate commit msg│   │
+│  │ deploy  │ Run deploy pipeline│   │
+│  │ review  │ Review PR quality  │   │
+│  └─────────┴────────────────────┘   │
+│  Full SKILL.md content NOT loaded    │
+│  → saves context window space        │
+└─────────────────────────────────────┘
+
+On invocation (/deploy):
+┌──────────────┐     ┌──────────────────┐
+│ ToolSearch   │────▶│ Read deploy.md   │
+│ match "deploy"│    │ Inject full body │
+└──────────────┘     └──────────────────┘
+                            │
+                     ┌──────▼──────────┐
+                     │ Context Window  │
+                     │ + deploy skill  │
+                     │   full instruct.│
+                     └─────────────────┘`}
+</div>
+
+When the user types `/commit`, Claude Code does not read the file itself — instead, the internal **Skill Tool** is invoked, which handles the lookup, loading, and injection. This process is transparent to the user.
+
+#### Automatic Recall Mechanism
+
+Beyond manual `/name` invocation, the AI can also match skills automatically. The system compares the current task description against all skills' descriptions using semantic matching. If the match score is high enough, the skill is loaded automatically. This is why the `description` field is so important — it determines whether the AI can "recall" the right skill at the right moment.
+
+#### Skill Frontmatter
+
+The YAML frontmatter in each skill file is the key to recall:
+
+<pre><code>{`---
+name: deploy
+description: Execute deployment pipeline with pre-checks, build, and verification
+---`}</code></pre>
+
+`name` is used for exact matching (`/deploy`), while `description` is used for semantic matching (AI's autonomous judgment). A good description should accurately convey the skill's purpose and applicable scenarios, so the AI can automatically think to invoke it when the user describes a related task.
+
+#### Loading vs Execution
+
+Loading a skill merely injects its markdown content into the context. The AI still needs to understand and execute the instructions within. This means the quality of the skill directly impacts execution accuracy — the clearer and more specific the instructions, the more precisely the AI performs.
+
+This also means Skills are fundamentally a **context injection** mechanism — they don't change Claude's capabilities, but guide Claude's behavior through carefully crafted prompts.
+
+### Tips for Writing Effective Skills
+
+- **Be explicit about steps**: Break tasks into clear steps, each with a specific action.
+- **Handle failure cases**: Tell Claude what to do when something fails.
+- **Specify tool usage**: If a Skill requires specific tools (`gh`, `npm`, etc.), state them explicitly.
+- **Stay focused**: One Skill solves one problem — don't mix unrelated tasks.
+- **Leverage project context**: Skills can reference project files and configs to make instructions more specific.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/hooks`}>
+<span class="chapter-article__nav-label">上一章 Prev</span>
+<span class="chapter-article__nav-title">Ch.8 Hooks</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/plugins`}>
+<span class="chapter-article__nav-label">下一章 Next</span>
+<span class="chapter-article__nav-title">Ch.10 Plugins</span>
+</a>
+</div>
+</div>

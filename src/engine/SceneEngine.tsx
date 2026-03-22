@@ -1,4 +1,4 @@
-import { Children, useState, useCallback, cloneElement, type ReactNode, type ReactElement } from 'react';
+import { Children, useState, useCallback, useEffect, useRef, cloneElement, type ReactNode, type ReactElement } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSceneNavigation } from './useSceneNavigation';
 import { getTransitionVariants, transitionConfig } from './transitions';
@@ -59,6 +59,10 @@ function SceneEngineInner({ children }: SceneEngineProps) {
   const { t } = useLanguage();
   const scenes = extractScenes(children);
   const [completedScenes, setCompletedScenes] = useState<Set<number>>(new Set());
+  const [scenesFinished, setScenesFinished] = useState(false);
+  const hasDispatchedRef = useRef(false);
+
+  const isLastScene = (index: number) => index >= scenes.length - 1;
 
   const isInteractive = (index: number) => {
     const scene = scenes[index] as ReactElement<{ interactive?: boolean }>;
@@ -84,9 +88,25 @@ function SceneEngineInner({ children }: SceneEngineProps) {
   const currentIsCompleted = completedScenes.has(currentIndex);
   const currentCanAdvance = !currentIsInteractive || currentIsCompleted;
 
+  // Detect when we reach the last scene and it's ready
+  useEffect(() => {
+    if (isLastScene(currentIndex) && currentCanAdvance && !hasDispatchedRef.current) {
+      hasDispatchedRef.current = true;
+      setScenesFinished(true);
+      window.dispatchEvent(new CustomEvent('claude101-scenes-complete'));
+    }
+  }, [currentIndex, currentCanAdvance]);
+
   const handleComplete = useCallback(() => {
     setCompletedScenes((prev) => new Set(prev).add(currentIndex));
   }, [currentIndex]);
+
+  const handleScrollDown = useCallback(() => {
+    const article = document.querySelector('.chapter-article');
+    if (article) {
+      article.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -96,15 +116,21 @@ function SceneEngineInner({ children }: SceneEngineProps) {
         target.closest('button') ||
         target.closest('input') ||
         target.closest('[data-interactive]') ||
-        target.closest('.deep-dive')
+        target.closest('.deep-dive') ||
+        target.closest('.scroll-indicator')
       ) {
+        return;
+      }
+      if (scenesFinished) {
+        // On last scene, click scrolls to article
+        handleScrollDown();
         return;
       }
       if (currentCanAdvance) {
         goNext();
       }
     },
-    [currentCanAdvance, goNext],
+    [currentCanAdvance, goNext, scenesFinished, handleScrollDown],
   );
 
   const variants = getTransitionVariants(direction);
@@ -132,7 +158,7 @@ function SceneEngineInner({ children }: SceneEngineProps) {
         </AnimatePresence>
       </div>
 
-      {currentIsInteractive && currentIsCompleted && (
+      {currentIsInteractive && currentIsCompleted && !isLastScene(currentIndex) && (
         <button className="scene-continue-btn" onClick={goNext}>
           {t('继续 →', 'Continue →')}
         </button>
@@ -142,6 +168,15 @@ function SceneEngineInner({ children }: SceneEngineProps) {
         <div className="scene-interact-hint" aria-live="polite">
           {t('请完成上方的互动体验', 'Please complete the interactive experience above')}
         </div>
+      )}
+
+      {scenesFinished && (
+        <button className="scroll-indicator" onClick={handleScrollDown}>
+          <span>{t('向下滚动，深入了解', 'Scroll down to learn more')}</span>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 4v12M5 11l5 5 5-5" />
+          </svg>
+        </button>
       )}
 
       <ProgressDots

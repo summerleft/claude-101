@@ -1,10 +1,406 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 11
+chapter: 12
 title: 'Permissions & Safety'
 subtitle: '信任的边界'
 ---
 
-import Ch11Scenes from '../../chapters/ch11/Ch11Scenes';
+import Ch12Scenes from '../../chapters/ch12/Ch12Scenes';
 
-<Ch11Scenes client:only="react" />
+<Ch12Scenes client:only="react" />
+
+<div class="chapter-article">
+
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 信任的边界：权限与安全
+
+我能读取文件、执行命令、修改代码。这些能力让我强大，但也让我危险。如果我不小心执行了 `rm -rf /`？如果我把你的私钥上传到某个公开仓库？如果我在你的项目中引入了一个后门？
+
+这不是假设——这是每一个拥有工具的 AI 系统都必须面对的现实问题。Claude Code 的权限系统就是为了解决这个问题而设计的：**给我足够的能力去完成任务，但不给我搞砸一切的自由。**
+
+### 权限模式
+
+Claude Code 提供了五种权限模式，从最严格到最宽松：
+
+<pre><code>{`┌─────────────────┬───────────────────────────────────────┐
+│ 模式             │ 行为                                   │
+├─────────────────┼───────────────────────────────────────┤
+│ plan            │ 只能思考和阅读，不能修改任何东西          │
+│ default         │ 读取自动允许，写入和执行需要逐次确认      │
+│ acceptEdits     │ 文件编辑自动允许，命令执行仍需确认        │
+│ dontAsk         │ 允许列表中的操作自动执行，其余仍需确认    │
+│ bypassPermissions│ 所有操作自动允许（危险！）               │
+└─────────────────┴───────────────────────────────────────┘`}</code></pre>
+
+大多数用户使用 `default` 模式。每次我需要写入文件或执行命令时，系统会暂停并询问你：「Claude 想要执行 `npm install lodash`，是否允许？」
+
+这种交互可能显得烦琐，但它建立了一个重要的信任机制：**你始终知道我在做什么，并且可以随时说不。**
+
+### 工具的权限层级
+
+不同工具有不同的风险等级：
+
+**只读工具（自动允许）：**
+- `Read` —— 读取文件内容
+- `Grep` —— 搜索文件内容
+- `Glob` —— 查找文件路径
+
+这些工具只是观察，不会改变任何东西。在大多数模式下，它们被自动允许。
+
+**写入工具（需要确认）：**
+- `Write` —— 写入/创建文件
+- `Edit` —— 修改文件内容
+
+这些工具会改变你的代码。默认情况下每次操作都需要你确认。
+
+**命令执行（需要确认）：**
+- `Bash` —— 执行 shell 命令
+
+这是最危险的工具。一条命令可以安装包、删除文件、启动服务器、访问网络。每次执行都需要确认。
+
+### Allow/Deny 规则
+
+手动确认每个操作很安全但低效。Allow/Deny 规则让你可以**精确定义**哪些操作自动允许，哪些永远禁止：
+
+<pre><code>{`// settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",        // 允许所有 npm 脚本
+      "Bash(git status)",       // 允许查看 git 状态
+      "Bash(git diff *)",       // 允许查看 diff
+      "Bash(npx prettier *)",   // 允许格式化代码
+      "Edit",                   // 允许所有文件编辑
+      "Write(src/**)"           // 允许写入 src 目录
+    ],
+    "deny": [
+      "Bash(rm -rf *)",         // 永远禁止递归删除
+      "Bash(git push --force*)",// 永远禁止 force push
+      "Bash(curl * | bash)",    // 永远禁止管道执行
+      "Write(.env*)",           // 永远禁止修改环境变量文件
+      "Bash(chmod 777 *)"       // 永远禁止开放全部权限
+    ]
+  }
+}`}</code></pre>
+
+这里有一个关键规则：**Deny 永远优先于 Allow。** 即使你在 allow 列表中写了 `Bash(rm -rf *)`, 如果 deny 列表中也有它，它仍然会被禁止。这是一个安全底线——deny 规则无法被绕过。
+
+模式匹配使用 glob 语法：
+- `*` 匹配任意字符
+- `Bash(npm run *)` 匹配 `npm run dev`、`npm run build` 等
+- `Write(src/**)` 匹配 `src/` 下任意深度的文件
+
+### 设置层级：洋葱模型
+
+权限配置不是单一的——它有多个层级，像洋葱一样层层叠加：
+
+<div class="chapter-article__ascii">
+<pre>{`
+    ┌─────────────────────────────────┐
+    │         Organization            │  ← 最高优先级
+    │  ┌───────────────────────────┐  │     组织级强制策略
+    │  │        CLI Args           │  │  ← 命令行参数
+    │  │  ┌─────────────────────┐  │  │     本次会话覆盖
+    │  │  │      Local          │  │  │  ← .claude/settings.local.json
+    │  │  │  ┌───────────────┐  │  │  │     本地个人配置（不提交）
+    │  │  │  │   Project     │  │  │  │  ← .claude/settings.json
+    │  │  │  │  ┌─────────┐  │  │  │  │     项目级（提交到仓库）
+    │  │  │  │  │  User   │  │  │  │  │  ← ~/.claude/settings.json
+    │  │  │  │  └─────────┘  │  │  │  │     用户全局默认
+    │  │  │  └───────────────┘  │  │  │
+    │  │  └─────────────────────┘  │  │
+    │  └───────────────────────────┘  │
+    └─────────────────────────────────┘
+`}</pre>
+</div>
+
+每一层都可以定义自己的 allow 和 deny 规则。外层的 deny 规则会覆盖内层的 allow 规则。这意味着：
+
+- **Organization（组织级）** 可以强制禁止某些危险操作，即使项目配置允许
+- **Project（项目级）** 定义团队共享的权限规则
+- **Local（本地级）** 让个人添加自己的偏好，而不影响团队
+- **CLI Args（命令行参数）** 在本次会话中临时覆盖
+
+<pre><code>{`# 组织级禁止所有 force push
+# Organization: deny Bash(git push --force*)
+
+# 项目级允许 npm 脚本
+# Project: allow Bash(npm run *)
+
+# 本地级允许额外的调试命令
+# Local: allow Bash(node --inspect *)
+
+# 最终效果：
+# ✓ npm run dev         → 允许（项目级 allow）
+# ✓ node --inspect app  → 允许（本地级 allow）
+# ✗ git push --force    → 禁止（组织级 deny，不可覆盖）`}</code></pre>
+
+### 权限保护了什么？
+
+权限系统防范三类核心风险：
+
+**意外删除。** 一个错误的 `rm` 命令或错误的文件路径可以摧毁你的工作。Deny 规则可以完全禁止危险的删除模式。
+
+**秘密泄露。** `.env` 文件、API 密钥、私钥——这些永远不应该被 AI 读取、修改或泄露。你可以禁止对敏感文件的读写。
+
+**未授权访问。** AI 不应该访问它不需要的网络资源、安装未经审查的包、或修改系统配置。权限规则限定了 AI 的活动范围。
+
+### 沙箱环境
+
+除了权限规则，Claude Code 还在一个**沙箱（sandbox）** 中运行工具。沙箱提供了额外的安全层：
+
+- **网络限制** —— 可以限制网络访问，防止数据外泄
+- **文件系统限制** —— 可以限制可访问的目录范围
+- **进程限制** —— 防止 fork bomb 和资源耗尽
+- **时间限制** —— 长时间运行的命令会被自动终止
+
+沙箱和权限规则是互补的：权限规则决定「我能做什么」，沙箱决定「我能在哪里做」。
+
+### settings.json 中的配置
+
+权限的完整配置在 `settings.json` 中：
+
+<pre><code>{`{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(npm run *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Write(.env*)",
+      "Write(*.pem)",
+      "Write(*.key)",
+      "Bash(curl * | sh)",
+      "Bash(wget * | sh)"
+    ]
+  }
+}`}</code></pre>
+
+### 最佳实践：最小权限原则
+
+安全配置的核心原则是**最小权限（Principle of Least Privilege）**：只给我完成当前任务所必需的权限，不多不少。
+
+1. **从严格开始。** 使用 `default` 模式，观察我实际需要哪些权限
+2. **逐步放开。** 把频繁确认的安全操作加入 allow 列表
+3. **明确禁止危险操作。** 把已知的危险模式加入 deny 列表
+4. **项目级配置。** 让团队共享同一套权限规则
+5. **定期审查。** 随着项目变化，更新权限配置
+
+权限系统不是为了限制我的能力——它是为了让你**放心地**使用我的能力。有了明确的边界，你可以更大胆地让我工作，因为你知道我不会做出超越边界的事情。信任是一步步建立的，权限系统就是这个过程的基础设施。
+
+</div>
+
+<div class="article-en">
+
+## The Boundaries of Trust: Permissions and Safety
+
+I can read files, execute commands, and modify code. These capabilities make me powerful, but also potentially dangerous. What if I accidentally run `rm -rf /`? What if I upload your private key to a public repository? What if I introduce a backdoor into your project?
+
+This is not hypothetical -- it is a real problem every AI system with tool access must confront. Claude Code's permission system is designed to solve exactly this: **give me enough capability to complete tasks, but not enough freedom to ruin everything.**
+
+### Permission Modes
+
+Claude Code offers five permission modes, from most restrictive to most permissive:
+
+<pre><code>{`┌───────────────────┬─────────────────────────────────────────┐
+│ Mode              │ Behavior                                │
+├───────────────────┼─────────────────────────────────────────┤
+│ plan              │ Read and think only, cannot modify       │
+│ default           │ Reads auto-allowed, writes/exec need    │
+│                   │ per-action confirmation                  │
+│ acceptEdits       │ File edits auto-allowed, commands still  │
+│                   │ need confirmation                        │
+│ dontAsk           │ Allowed-list ops auto-execute, others   │
+│                   │ still need confirmation                  │
+│ bypassPermissions │ Everything auto-allowed (dangerous!)     │
+└───────────────────┴─────────────────────────────────────────┘`}</code></pre>
+
+Most users work in `default` mode. Every time I need to write a file or execute a command, the system pauses and asks you: "Claude wants to run `npm install lodash`, allow?"
+
+This interaction may feel tedious, but it establishes an important trust mechanism: **you always know what I am doing, and you can always say no.**
+
+### Tool Permission Levels
+
+Different tools carry different risk levels:
+
+**Read-only tools (auto-allowed):**
+- `Read` -- read file contents
+- `Grep` -- search file contents
+- `Glob` -- find file paths
+
+These tools only observe and never change anything. In most modes, they are automatically permitted.
+
+**Write tools (require confirmation):**
+- `Write` -- write/create files
+- `Edit` -- modify file contents
+
+These tools change your code. By default, each operation requires your confirmation.
+
+**Command execution (require confirmation):**
+- `Bash` -- execute shell commands
+
+This is the most dangerous tool. A single command can install packages, delete files, start servers, or access the network. Every execution requires confirmation.
+
+### Allow/Deny Rules
+
+Manually confirming every operation is safe but inefficient. Allow/Deny rules let you **precisely define** which operations are automatically permitted and which are permanently forbidden:
+
+<pre><code>{`// settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",        // Allow all npm scripts
+      "Bash(git status)",       // Allow checking git status
+      "Bash(git diff *)",       // Allow viewing diffs
+      "Bash(npx prettier *)",   // Allow code formatting
+      "Edit",                   // Allow all file edits
+      "Write(src/**)"           // Allow writes to src directory
+    ],
+    "deny": [
+      "Bash(rm -rf *)",         // Never allow recursive deletion
+      "Bash(git push --force*)",// Never allow force push
+      "Bash(curl * | bash)",    // Never allow pipe execution
+      "Write(.env*)",           // Never allow modifying env files
+      "Bash(chmod 777 *)"       // Never allow open permissions
+    ]
+  }
+}`}</code></pre>
+
+There is a critical rule here: **Deny always takes priority over Allow.** Even if you put `Bash(rm -rf *)` in the allow list, if the deny list also contains it, the operation will still be blocked. This is a safety floor -- deny rules cannot be overridden.
+
+Pattern matching uses glob syntax:
+- `*` matches any characters
+- `Bash(npm run *)` matches `npm run dev`, `npm run build`, etc.
+- `Write(src/**)` matches files at any depth under `src/`
+
+### Settings Hierarchy: The Onion Model
+
+Permission configuration is not a single layer -- it has multiple levels that stack like an onion:
+
+<div class="chapter-article__ascii">
+<pre>{`
+    ┌─────────────────────────────────┐
+    │         Organization            │  ← Highest priority
+    │  ┌───────────────────────────┐  │     Org-level enforced policies
+    │  │        CLI Args           │  │  ← Command-line arguments
+    │  │  ┌─────────────────────┐  │  │     Session-level overrides
+    │  │  │      Local          │  │  │  ← .claude/settings.local.json
+    │  │  │  ┌───────────────┐  │  │  │     Personal local (not committed)
+    │  │  │  │   Project     │  │  │  │  ← .claude/settings.json
+    │  │  │  │  ┌─────────┐  │  │  │  │     Project-level (in repo)
+    │  │  │  │  │  User   │  │  │  │  │  ← ~/.claude/settings.json
+    │  │  │  │  └─────────┘  │  │  │  │     User global defaults
+    │  │  │  └───────────────┘  │  │  │
+    │  │  └─────────────────────┘  │  │
+    │  └───────────────────────────┘  │
+    └─────────────────────────────────┘
+`}</pre>
+</div>
+
+Each layer can define its own allow and deny rules. Outer-layer deny rules override inner-layer allow rules. This means:
+
+- **Organization** can enforce prohibitions on dangerous operations, even if project settings allow them
+- **Project** defines team-shared permission rules
+- **Local** lets individuals add personal preferences without affecting the team
+- **CLI Args** temporarily override settings for the current session
+
+<pre><code>{`# Organization forbids all force push
+# Organization: deny Bash(git push --force*)
+
+# Project allows npm scripts
+# Project: allow Bash(npm run *)
+
+# Local allows additional debug commands
+# Local: allow Bash(node --inspect *)
+
+# Final effect:
+# ✓ npm run dev         → allowed (project allow)
+# ✓ node --inspect app  → allowed (local allow)
+# ✗ git push --force    → denied (org deny, cannot override)`}</code></pre>
+
+### What Do Permissions Protect Against?
+
+The permission system guards against three core risks:
+
+**Accidental deletion.** A wrong `rm` command or incorrect file path can destroy your work. Deny rules can completely prevent dangerous deletion patterns.
+
+**Secret exposure.** `.env` files, API keys, private keys -- these should never be read, modified, or leaked by AI. You can forbid reading and writing sensitive files.
+
+**Unauthorized access.** AI should not access network resources it does not need, install unvetted packages, or modify system configurations. Permission rules define the boundaries of AI activity.
+
+### The Sandbox
+
+Beyond permission rules, Claude Code runs tools inside a **sandbox**. The sandbox provides an additional security layer:
+
+- **Network restrictions** -- can limit network access to prevent data exfiltration
+- **Filesystem restrictions** -- can limit accessible directory scope
+- **Process restrictions** -- prevent fork bombs and resource exhaustion
+- **Time restrictions** -- long-running commands are automatically terminated
+
+The sandbox and permission rules are complementary: permission rules determine "what I can do," while the sandbox determines "where I can do it."
+
+### Configuration in settings.json
+
+The complete permission configuration lives in `settings.json`:
+
+<pre><code>{`{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(npm run *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Write(.env*)",
+      "Write(*.pem)",
+      "Write(*.key)",
+      "Bash(curl * | sh)",
+      "Bash(wget * | sh)"
+    ]
+  }
+}`}</code></pre>
+
+### Best Practices: Principle of Least Privilege
+
+The core principle of secure configuration is the **Principle of Least Privilege**: give me only the permissions necessary to complete the current task -- nothing more, nothing less.
+
+1. **Start strict.** Use `default` mode and observe which permissions I actually need
+2. **Open up gradually.** Add frequently confirmed safe operations to the allow list
+3. **Explicitly deny dangerous operations.** Add known dangerous patterns to the deny list
+4. **Configure at project level.** Share the same permission rules across the team
+5. **Review regularly.** Update permission configurations as the project evolves
+
+The permission system is not about limiting my capabilities -- it is about letting you **confidently** use my capabilities. With clear boundaries, you can be bolder in letting me work because you know I will not do anything beyond those boundaries. Trust is built step by step, and the permission system is the infrastructure for that process.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/agents`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.11 Agents & Subagents</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/configuration`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.13 Configuration</span>
+</a>
+</div>
+
+</div>

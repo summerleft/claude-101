@@ -3,7 +3,7 @@ import Scene from '../../components/scene/Scene';
 import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
-import SubagentDispatch from '../../components/interactive/ch10/SubagentDispatch';
+import PluginAnatomy from '../../components/interactive/ch10/PluginAnatomy';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch10Scenes() {
@@ -17,17 +17,17 @@ function Ch10Content() {
     <SceneEngine>
       <Scene>
         <Narration>
-          <p>{t('一个任务太大了——', 'A task too big to handle alone—')}</p>
+          <p>{t('你有了 skills、hooks、agents。', 'You have skills, hooks, and agents.')}</p>
           <p>
             {t(
-              '重构整个模块、同时写测试、还要更新文档。',
-              'Refactor the entire module, write tests, and update documentation—all at once.'
+              <>但它们<strong>散落在各处</strong>。</>,
+              <>But they\'re <strong>scattered everywhere</strong>.</>
             )}
           </p>
           <p>
             {t(
-              <>你一个人，<strong>忙不过来</strong>。</>,
-              <>On your own, you simply <strong>can't keep up</strong>.</>
+              '如果想分享给团队，或者在不同项目间复用呢？',
+              'What if you want to share them with your team, or reuse them across projects?'
             )}
           </p>
         </Narration>
@@ -35,19 +35,26 @@ function Ch10Content() {
 
       <Scene>
         <Narration>
+          <p>{t(
+            '一个 skill 在这里，一个 hook 在那里，一个 agent 定义在别处。',
+            'One skill here, one hook there, an agent definition somewhere else.'
+          )}</p>
           <p>
             {t(
-              <>线性执行太慢。一步一步做，context 窗口也要<strong>爆了</strong>。</>,
-              <>Sequential execution is too slow. Step by step, the context window is about to <strong>overflow</strong>.</>
+              <>每次新项目都要<strong>手动复制</strong>。</>,
+              <>Every new project requires <strong>manual copying</strong>.</>
             )}
           </p>
           <p>
             {t(
-              <>重构需要理解整个模块的结构；<br />测试需要覆盖所有边界条件；<br />文档需要反映最新的 API 变化。</>,
-              <>Refactoring requires understanding the entire module structure;<br />Testing needs to cover all edge cases;<br />Documentation must reflect the latest API changes.</>
+              '文件路径对不上，配置不兼容，版本不一致——',
+              'File paths don\'t match, configurations are incompatible, versions are inconsistent—'
             )}
           </p>
-          <p>{t('每件事都需要大量 context，但 context 是有限的。', 'Each task demands a lot of context, but context is finite.')}</p>
+          <p>{t(
+            '这不是"复用"，这是"复制粘贴地狱"。',
+            'This isn\'t "reuse"—it\'s "copy-paste hell".'
+          )}</p>
         </Narration>
       </Scene>
 
@@ -55,20 +62,20 @@ function Ch10Content() {
         <Narration>
           <p>
             {t(
-              <><strong>分身术</strong>——Subagent。</>,
-              <><strong>The Art of Cloning</strong>—Subagents.</>
+              <>于是，<strong>Plugin</strong> 诞生了。</>,
+              <>And so, <strong>Plugin</strong> was born.</>
             )}
           </p>
           <p>
             {t(
-              <>你可以派出多个子代理，每个都有自己独立的<strong> context、工具权限</strong>，甚至不同的<strong>模型</strong>。</>,
-              <>You can dispatch multiple subagents, each with its own independent <strong>context, tool permissions</strong>, and even different <strong>models</strong>.</>
+              <>Plugin 就是一个"超能力包"——把 skills、hooks、agents、MCP 配置打包成一个<strong>可安装、可分享</strong>的整体。</>,
+              <>A Plugin is a "superpower package"—bundling skills, hooks, agents, and MCP configurations into one <strong>installable, shareable</strong> package.</>
             )}
           </p>
           <p>
             {t(
-              '它们是你的分身——独立思考，独立行动，最后把结果汇报给你。',
-              'They are your clones—thinking independently, acting independently, and reporting results back to you.'
+              '就像 npm 包之于 JavaScript，Plugin 之于 Claude Code。',
+              'Like npm packages are to JavaScript, Plugins are to Claude Code.'
             )}
           </p>
         </Narration>
@@ -76,28 +83,65 @@ function Ch10Content() {
 
       <Scene interactive>
         <Narration>
-          <p>{t('让我们看看不同类型的子代理。', "Let's look at the different types of subagents.")}</p>
-          <p>{t('点击每个子代理了解它的能力，然后派遣它执行任务：', 'Click each subagent to learn about its capabilities, then dispatch it on a task:')}</p>
+          <p>{t(
+            '一个 Plugin 的内部结构是什么样的？',
+            'What does the internal structure of a Plugin look like?'
+          )}</p>
+          <p>{t(
+            '点击文件树中的每一项，看看它的作用：',
+            'Click each item in the file tree to see what it does:'
+          )}</p>
         </Narration>
-        <SubagentDispatch />
+        <PluginAnatomy />
       </Scene>
 
       <Scene>
         <Narration>
+          <p>
+            {t(
+              <>创建 Plugin，从 <code>.claude-plugin/plugin.json</code> 开始。</>,
+              <>Creating a Plugin starts with <code>.claude-plugin/plugin.json</code>.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>这是插件的<strong>清单文件</strong>——定义名字、版本、描述。</>,
+              <>This is the plugin's <strong>manifest file</strong>—defining name, version, and description.</>
+            )}
+          </p>
           <p>{t(
-            <>除了内置的子代理，你还可以定义<strong>自己的</strong>。</>,
-            <>Beyond the built-in subagents, you can define <strong>your own</strong>.</>
+            '然后，把你的 skills、hooks、agents 一个一个放进对应的目录。',
+            'Then, place your skills, hooks, and agents into their corresponding directories one by one.'
           )}</p>
           <p>
             {t(
-              <>code-reviewer——专门审查代码质量；<br />debugger——专注定位和修复 bug；<br />data-scientist——擅长数据分析和可视化。</>,
-              <>code-reviewer—specializing in code quality review;<br />debugger—focused on locating and fixing bugs;<br />data-scientist—skilled in data analysis and visualization.</>
+              <>每个组件自动获得一个<strong>命名空间</strong>：<code>plugin-name:skill-name</code>。</>,
+              <>Each component automatically gets a <strong>namespace</strong>: <code>plugin-name:skill-name</code>.</>
+            )}
+          </p>
+          <p>{t('再也不用担心名字冲突了。', 'No more worrying about name conflicts.')}</p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>{t('Plugin 做好了，怎么分享？', 'Plugin is ready—how do you share it?')}</p>
+          <p>
+            {t(
+              <>两种方式：通过 <strong>marketplace</strong> 发布，让所有人都能安装；</>,
+              <>Two ways: Publish through the <strong>marketplace</strong> so everyone can install it;</>
             )}
           </p>
           <p>
             {t(
-              <>每个都有专门的系统提示和工具权限，<br />让它成为某个领域的<strong>专家</strong>。</>,
-              <>Each has dedicated system prompts and tool permissions,<br />making it an <strong>expert</strong> in its domain.</>
+              <>或者用 <code>--plugin-dir</code> 指定本地路径，快速加载。</>,
+              <>Or use <code>--plugin-dir</code> to specify a local path for quick loading.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>团队可以共享 marketplace，统一工具链——<br />每个人用同样的 skills、同样的 hooks、同样的最佳实践。</>,
+              <>Teams can share a marketplace and unify their toolchain—<br />everyone using the same skills, same hooks, same best practices.</>
             )}
           </p>
         </Narration>
@@ -107,43 +151,20 @@ function Ch10Content() {
         <Narration>
           <p>
             {t(
-              <>关键在于——多个子代理可以<strong>并行工作</strong>。</>,
-              <>The key is—multiple subagents can <strong>work in parallel</strong>.</>
+              <strong>Plugin 是 Claude Code 生态系统的基石。</strong>,
+              <strong>Plugin is the cornerstone of the Claude Code ecosystem.</strong>
             )}
           </p>
           <p>
             {t(
-              <>一个在重构代码，一个在写测试，一个在更新文档——<strong>同时进行</strong>。</>,
-              <>One refactoring code, one writing tests, one updating docs—<strong>all at the same time</strong>.</>
+              '它让个人的"超能力"变成了团队的"标准装备"。',
+              'It turns individual "superpowers" into team "standard equipment".'
             )}
           </p>
           <p>
             {t(
-              '原来需要一小时的任务，现在可能只需要几分钟。',
-              'What used to take an hour might now take just a few minutes.'
-            )}
-          </p>
-        </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <><strong>Subagents 把 AI 从"一个助手"变成了"一个团队"。</strong></>,
-              <><strong>Subagents transform AI from "one assistant" into "a team."</strong></>
-            )}
-          </p>
-          <p>
-            {t(
-              '合理分工，并行执行，是处理复杂任务的关键。',
-              'Smart delegation and parallel execution are key to handling complex tasks.'
-            )}
-          </p>
-          <p>
-            {t(
-              <>就像一个优秀的技术负责人——<br />不是自己写所有代码，而是知道如何分配任务。</>,
-              <>Like a great tech lead—<br />not writing all the code themselves, but knowing how to delegate.</>
+              <>一个人的最佳实践，通过 Plugin，变成了<strong>所有人的默认配置</strong>。</>,
+              <>One person's best practices, through Plugin, become <strong>everyone's default configuration</strong>.</>
             )}
           </p>
         </Narration>
@@ -151,17 +172,17 @@ function Ch10Content() {
 
       <Scene>
         <Narration>
-          <p>{t('能力越大，责任越大。', 'With great power comes great responsibility.')}</p>
+          <p>{t('现在你了解了所有的工具和扩展。', 'Now you understand all the tools and extensions.')}</p>
           <p>
             {t(
-              <>你现在能读文件、写代码、执行命令、<br />连接外部服务、甚至派出子代理。</>,
-              <>You can now read files, write code, execute commands,<br />connect to external services, and even dispatch subagents.</>
+              '但如果一个人忙不过来呢？',
+              'But what if one person can\'t handle it all?'
             )}
           </p>
           <p>
             {t(
-              <>下一章，我们来谈谈信任的边界——<strong>Permissions & Safety</strong>。</>,
-              <>Next chapter, let's talk about trust boundaries—<strong>Permissions & Safety</strong>.</>
+              <>下一章——<strong>分身术</strong>。</>,
+              <>Next chapter—<strong>The Art of Cloning</strong>.</>
             )}
           </p>
         </Narration>

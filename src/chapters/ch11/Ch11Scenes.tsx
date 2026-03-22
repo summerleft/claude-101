@@ -3,7 +3,7 @@ import Scene from '../../components/scene/Scene';
 import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
-import PermissionSimulator from '../../components/interactive/ch11/PermissionSimulator';
+import SubagentDispatch from '../../components/interactive/ch11/SubagentDispatch';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch11Scenes() {
@@ -17,35 +17,17 @@ function Ch11Content() {
     <SceneEngine>
       <Scene>
         <Narration>
+          <p>{t('一个任务太大了——', 'A task too big to handle alone—')}</p>
           <p>
             {t(
-              <>你现在可以读文件、写代码、执行命令、<br />连接外部服务、甚至派出子代理。</>,
-              <>You can now read files, write code, execute commands,<br />connect to external services, and even dispatch subagents.</>
+              '重构整个模块、同时写测试、还要更新文档。',
+              'Refactor the entire module, write tests, and update documentation—all at once.'
             )}
           </p>
           <p>
             {t(
-              <>这些能力很强大——也很<strong>危险</strong>。</>,
-              <>These capabilities are powerful—and <strong>dangerous</strong>.</>
-            )}
-          </p>
-        </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <>如果 AI 执行了 <code>rm -rf /</code>？</>,
-              <>What if AI executes <code>rm -rf /</code>?</>
-            )}
-          </p>
-          <p>{t('如果它把秘密写进了公开仓库？', 'What if it writes secrets into a public repository?')}</p>
-          <p>{t('如果它未经授权访问了生产数据库？', 'What if it accesses the production database without authorization?')}</p>
-          <p>
-            {t(
-              <><strong>能力没有边界，就是灾难。</strong></>,
-              <><strong>Power without boundaries is a disaster.</strong></>
+              <>你一个人，<strong>忙不过来</strong>。</>,
+              <>On your own, you simply <strong>can't keep up</strong>.</>
             )}
           </p>
         </Narration>
@@ -55,20 +37,38 @@ function Ch11Content() {
         <Narration>
           <p>
             {t(
-              <>所以 Claude Code 有一套分层的<strong>权限系统</strong>。</>,
-              <>That's why Claude Code has a layered <strong>permission system</strong>.</>
+              <>线性执行太慢。一步一步做，context 窗口也要<strong>爆了</strong>。</>,
+              <>Sequential execution is too slow. Step by step, the context window is about to <strong>overflow</strong>.</>
             )}
           </p>
           <p>
             {t(
-              <>只读操作——<strong>自动放行</strong>，不需要确认。<br />写操作——<strong>需要确认</strong>，你来决定。<br />Bash 命令——<strong>需要确认</strong>，逐条审核。</>,
-              <>Read-only operations—<strong>auto-approved</strong>, no confirmation needed.<br />Write operations—<strong>require approval</strong>, you decide.<br />Bash commands—<strong>require approval</strong>, reviewed one by one.</>
+              <>重构需要理解整个模块的结构；<br />测试需要覆盖所有边界条件；<br />文档需要反映最新的 API 变化。</>,
+              <>Refactoring requires understanding the entire module structure;<br />Testing needs to cover all edge cases;<br />Documentation must reflect the latest API changes.</>
+            )}
+          </p>
+          <p>{t('每件事都需要大量 context，但 context 是有限的。', 'Each task demands a lot of context, but context is finite.')}</p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>
+            {t(
+              <><strong>分身术</strong>——Subagent。</>,
+              <><strong>The Art of Cloning</strong>—Subagents.</>
             )}
           </p>
           <p>
             {t(
-              <>每一层，都是一道安全的<strong>闸门</strong>。</>,
-              <>Each layer is a safety <strong>gate</strong>.</>
+              <>你可以派出多个子代理，每个都有自己独立的<strong> context、工具权限</strong>，甚至不同的<strong>模型</strong>。</>,
+              <>You can dispatch multiple subagents, each with its own independent <strong>context, tool permissions</strong>, and even different <strong>models</strong>.</>
+            )}
+          </p>
+          <p>
+            {t(
+              '它们是你的分身——独立思考，独立行动，最后把结果汇报给你。',
+              'They are your clones—thinking independently, acting independently, and reporting results back to you.'
             )}
           </p>
         </Narration>
@@ -76,62 +76,28 @@ function Ch11Content() {
 
       <Scene interactive>
         <Narration>
-          <p>
-            {t(
-              <>现在你来当<strong>守门人</strong>。</>,
-              <>Now it's your turn to be the <strong>gatekeeper</strong>.</>
-            )}
-          </p>
-          <p>{t('审核以下操作，决定是否放行：', 'Review the following operations and decide whether to approve:')}</p>
+          <p>{t('让我们看看不同类型的子代理。', "Let's look at the different types of subagents.")}</p>
+          <p>{t('点击每个子代理了解它的能力，然后派遣它执行任务：', 'Click each subagent to learn about its capabilities, then dispatch it on a task:')}</p>
         </Narration>
-        <PermissionSimulator />
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <>权限模式有<strong>五种</strong>：</>,
-              <>There are <strong>five</strong> permission modes:</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>default</strong> —— 标准模式，该问就问。<br /><strong>acceptEdits</strong> —— 自动通过文件编辑。<br /><strong>plan</strong> —— 只读模式，只看不动。<br /><strong>dontAsk</strong> —— 只用预批准的工具。<br /><strong>bypassPermissions</strong> —— 跳过所有检查，危险！</>,
-              <><strong>default</strong> — Standard mode, asks when needed.<br /><strong>acceptEdits</strong> — Auto-approves file edits.<br /><strong>plan</strong> — Read-only mode, observe without action.<br /><strong>dontAsk</strong> — Only uses pre-approved tools.<br /><strong>bypassPermissions</strong> — Skips all checks, dangerous!</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>选择哪种模式，取决于你对 AI 的<strong>信任程度</strong>。</>,
-              <>Which mode you choose depends on your <strong>level of trust</strong> in AI.</>
-            )}
-          </p>
-        </Narration>
+        <SubagentDispatch />
       </Scene>
 
       <Scene>
         <Narration>
           <p>{t(
-            <>更精细的控制？用 <strong>Allow & Deny 规则</strong>。</>,
-            <>Need finer control? Use <strong>Allow & Deny rules</strong>.</>
+            <>除了内置的子代理，你还可以定义<strong>自己的</strong>。</>,
+            <>Beyond the built-in subagents, you can define <strong>your own</strong>.</>
           )}</p>
           <p>
             {t(
-              <><code>Bash(npm run *)</code> —— 允许所有 npm 命令。<br /><code>Bash(rm -rf *)</code> —— 拒绝危险删除。</>,
-              <><code>Bash(npm run *)</code> — Allow all npm commands.<br /><code>Bash(rm -rf *)</code> — Deny dangerous deletions.</>
+              <>code-reviewer——专门审查代码质量；<br />debugger——专注定位和修复 bug；<br />data-scientist——擅长数据分析和可视化。</>,
+              <>code-reviewer—specializing in code quality review;<br />debugger—focused on locating and fixing bugs;<br />data-scientist—skilled in data analysis and visualization.</>
             )}
           </p>
           <p>
             {t(
-              <>规则很简单：<strong>Deny 优先于 Allow</strong>。</>,
-              <>The rule is simple: <strong>Deny takes priority over Allow</strong>.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>只要有一条 Deny 匹配，无论多少 Allow 都不管用。<br />这就是"安全优先"的原则。</>,
-              <>As long as one Deny rule matches, no amount of Allow rules will override it.<br />This is the "safety first" principle.</>
+              <>每个都有专门的系统提示和工具权限，<br />让它成为某个领域的<strong>专家</strong>。</>,
+              <>Each has dedicated system prompts and tool permissions,<br />making it an <strong>expert</strong> in its domain.</>
             )}
           </p>
         </Narration>
@@ -141,20 +107,20 @@ function Ch11Content() {
         <Narration>
           <p>
             {t(
-              <><strong>权限不是限制——是信任的边界。</strong></>,
-              <><strong>Permissions aren't restrictions—they're trust boundaries.</strong></>
+              <>关键在于——多个子代理可以<strong>并行工作</strong>。</>,
+              <>The key is—multiple subagents can <strong>work in parallel</strong>.</>
             )}
           </p>
           <p>
             {t(
-              '好的权限设置让 AI 高效工作，同时确保安全。',
-              'Good permission settings let AI work efficiently while staying safe.'
+              <>一个在重构代码，一个在写测试，一个在更新文档——<strong>同时进行</strong>。</>,
+              <>One refactoring code, one writing tests, one updating docs—<strong>all at the same time</strong>.</>
             )}
           </p>
           <p>
             {t(
-              <>就像给赛车手一条赛道——<br />不是不让他开快车，而是确保他不会冲出跑道。</>,
-              <>Like giving a race car driver a track—<br />not to stop them from going fast, but to make sure they don't fly off the road.</>
+              '原来需要一小时的任务，现在可能只需要几分钟。',
+              'What used to take an hour might now take just a few minutes.'
             )}
           </p>
         </Narration>
@@ -162,11 +128,40 @@ function Ch11Content() {
 
       <Scene>
         <Narration>
-          <p>{t('最后一章。', 'The final chapter.')}</p>
           <p>
             {t(
-              <>我们来把所有这些定制和配置整合在一起——<strong>Configuration</strong>。</>,
-              <>Let's bring all the customization and configuration together—<strong>Configuration</strong>.</>
+              <><strong>Subagents 把 AI 从"一个助手"变成了"一个团队"。</strong></>,
+              <><strong>Subagents transform AI from "one assistant" into "a team."</strong></>
+            )}
+          </p>
+          <p>
+            {t(
+              '合理分工，并行执行，是处理复杂任务的关键。',
+              'Smart delegation and parallel execution are key to handling complex tasks.'
+            )}
+          </p>
+          <p>
+            {t(
+              <>就像一个优秀的技术负责人——<br />不是自己写所有代码，而是知道如何分配任务。</>,
+              <>Like a great tech lead—<br />not writing all the code themselves, but knowing how to delegate.</>
+            )}
+          </p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>{t('能力越大，责任越大。', 'With great power comes great responsibility.')}</p>
+          <p>
+            {t(
+              <>你现在能读文件、写代码、执行命令、<br />连接外部服务、甚至派出子代理。</>,
+              <>You can now read files, write code, execute commands,<br />connect to external services, and even dispatch subagents.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>下一章，我们来谈谈信任的边界——<strong>Permissions & Safety</strong>。</>,
+              <>Next chapter, let's talk about trust boundaries—<strong>Permissions & Safety</strong>.</>
             )}
           </p>
         </Narration>

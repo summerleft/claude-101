@@ -89,22 +89,18 @@ export default function MCPArchitecture() {
               <div
                 className={`mcp-arch__layer ${selectedLayer === layer.id ? 'mcp-arch__layer--active' : ''}`}
                 style={{
-                  borderColor: selectedLayer === layer.id ? layer.color : 'var(--color-border)',
-                  background: selectedLayer === layer.id ? `${layer.color}15` : 'var(--color-bg-secondary)',
-                  cursor: 'pointer',
+                  borderColor: selectedLayer === layer.id ? layer.color : undefined,
+                  background: selectedLayer === layer.id ? `${layer.color}15` : undefined,
                 }}
                 onClick={() => setSelectedLayer(selectedLayer === layer.id ? null : layer.id)}
               >
-                <div
-                  className="mcp-arch__layer-dot"
-                  style={{ background: layer.color }}
-                />
+                <div className="mcp-arch__layer-dot" style={{ background: layer.color }} />
                 <span className="mcp-arch__layer-label">{layer.label}</span>
               </div>
               {i < layersData.length - 1 && (
                 <div className="mcp-arch__arrow">
-                  <svg width="20" height="24" viewBox="0 0 20 24" fill="none">
-                    <path d="M10 0 L10 18 M4 12 L10 18 L16 12" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 2 L10 14 M5 10 L10 15 L15 10" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
               )}
@@ -112,20 +108,20 @@ export default function MCPArchitecture() {
           ))}
         </div>
 
-        {selectedLayer && (
-          <div
-            className="mcp-arch__detail"
-            style={{
-              borderColor: layersData.find((l) => l.id === selectedLayer)!.color + '40',
-              background: layersData.find((l) => l.id === selectedLayer)!.color + '10',
-            }}
-          >
-            <p>{t(
-              layersData.find((l) => l.id === selectedLayer)!.zhDescription,
-              layersData.find((l) => l.id === selectedLayer)!.enDescription
-            )}</p>
-          </div>
-        )}
+        {selectedLayer && (() => {
+          const layer = layersData.find((l) => l.id === selectedLayer)!;
+          return (
+            <div
+              className="mcp-arch__detail"
+              style={{
+                borderColor: layer.color + '40',
+                background: layer.color + '10',
+              }}
+            >
+              <p>{t(layer.zhDescription, layer.enDescription)}</p>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="mcp-arch__divider" />
@@ -142,10 +138,6 @@ export default function MCPArchitecture() {
                 key={server.id}
                 className={`mcp-arch__server ${connected ? 'mcp-arch__server--connected' : ''}`}
                 onClick={() => handleConnect(server.id)}
-                style={{
-                  borderColor: connected ? '#10b981' : 'var(--color-border)',
-                  background: connected ? 'rgba(16, 185, 129, 0.08)' : 'var(--color-bg-secondary)',
-                }}
               >
                 <div className="mcp-arch__server-icon">{server.icon}</div>
                 <div className="mcp-arch__server-name">{server.name}</div>

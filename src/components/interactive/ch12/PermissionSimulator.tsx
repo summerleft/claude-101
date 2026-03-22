@@ -104,8 +104,9 @@ export default function PermissionSimulator() {
   }, [allDone, sceneComplete]);
 
   useEffect(() => {
-    if (isAutoAllowed && currentCall) {
-      setDecisions((prev) => ({ ...prev, [currentCall.id]: 'allow' }));
+    const call = toolCalls[currentIndex];
+    if (call?.autoAllowed) {
+      setDecisions((prev) => ({ ...prev, [call.id]: 'allow' }));
       setShowFeedback(true);
       const timer = setTimeout(() => {
         setShowFeedback(false);
@@ -117,7 +118,8 @@ export default function PermissionSimulator() {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [currentIndex, isAutoAllowed, currentCall]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex]);
 
   const makeDecision = (decision: Decision) => {
     setDecisions((prev) => ({ ...prev, [currentCall.id]: decision }));

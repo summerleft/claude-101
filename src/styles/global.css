@@ -31,7 +31,15 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     margin: 0;
+  }
+
+  /* Lock scroll on chapter pages until scenes complete */
+  body.chapter-page {
     overflow: hidden;
+  }
+
+  body.chapter-page.scroll-unlocked {
+    overflow: auto;
   }
 
   ::selection {

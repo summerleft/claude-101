@@ -1,10 +1,370 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 7
+chapter: 8
 title: 'Hooks'
 subtitle: '自动化的触发器'
 ---
 
-import Ch07Scenes from '../../chapters/ch07/Ch07Scenes';
+import Ch08Scenes from '../../chapters/ch08/Ch08Scenes';
 
-<Ch07Scenes client:only="react" />
+<Ch08Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## Hooks：事件驱动的自动化
+
+在 Claude Code 的世界里，**Hooks** 是一套事件驱动的自动化机制。它们是你预先配置的 shell 命令，会在 Claude Code 的特定生命周期事件发生时自动执行。你可以把 Hooks 想象成 Git Hooks 的类比——就像 `pre-commit` 和 `post-commit` 钩子一样，Claude Code 的 Hooks 让你在工具调用的前后插入自定义逻辑。
+
+与让 Claude 自主决定是否执行某个操作不同，Hooks 提供了**确定性的保证**：只要事件触发，命令就一定会执行。这对于代码格式化、lint 检查、安全防护等场景至关重要。
+
+### Hook 的类型
+
+Claude Code 支持以下五种 Hook 事件类型：
+
+<div class="chapter-article__ascii">
+{`┌─────────────────┬──────────────────────────────────────────────┐
+│  Event Type     │  Description                                 │
+├─────────────────┼──────────────────────────────────────────────┤
+│  PreToolUse     │  工具执行前触发，可以拦截或修改工具输入          │
+│  PostToolUse    │  工具执行后触发，可以对工具输出做后处理          │
+│  Notification   │  Claude Code 发送通知时触发                    │
+│  Stop           │  主 Agent 即将结束响应时触发                   │
+│  SubagentStop   │  子 Agent 即将结束响应时触发                   │
+└─────────────────┴──────────────────────────────────────────────┘`}
+</div>
+
+其中最常用的是 **PreToolUse** 和 **PostToolUse**，它们让你在工具调用的前后注入自定义行为。
+
+### 配置格式
+
+Hooks 在 `.claude/settings.json`（项目级）或 `~/.claude/settings.json`（用户级）中配置。配置结构如下：
+
+<pre><code>{`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "command": "echo 'About to write a file: $CLAUDE_FILE_PATH'"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx prettier --write $CLAUDE_FILE_PATH"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "echo 'Claude has finished responding'"
+      }
+    ]
+  }
+}`}</code></pre>
+
+每个 Hook 条目包含：
+
+- **`matcher`**（可选）：匹配工具名称的字符串。仅当工具名称匹配时才触发该 Hook。省略 matcher 表示匹配所有工具。
+- **`command`**：要执行的 shell 命令。
+
+### Matcher 的匹配规则
+
+`matcher` 字段用于过滤触发 Hook 的工具。它按照工具名称进行匹配：
+
+<pre><code>{`// 仅在 Write 工具调用时触发
+{ "matcher": "Write", "command": "..." }
+
+// 仅在 Bash 工具调用时触发
+{ "matcher": "Bash", "command": "..." }
+
+// 在任何工具调用时都触发（省略 matcher）
+{ "command": "..." }`}</code></pre>
+
+### 环境变量
+
+Hook 命令执行时，Claude Code 会注入一系列环境变量，让你的脚本能获取当前操作的上下文：
+
+- `$CLAUDE_FILE_PATH` — 当前操作的文件路径
+- `$CLAUDE_TOOL_NAME` — 触发 Hook 的工具名称
+- `$CLAUDE_TOOL_INPUT` — 工具的输入参数（JSON 格式）
+- `$CLAUDE_TOOL_OUTPUT` — 工具的输出结果（仅 PostToolUse 可用）
+
+### 拦截机制
+
+**PreToolUse** Hook 有一个强大的能力：如果 Hook 命令的退出码为非零值（exit code != 0），Claude Code 将**阻止该工具的执行**。这让你可以构建安全防护机制。
+
+<div class="chapter-article__ascii">
+{`用户请求 ──▶ Claude 决定调用工具
+                  │
+                  ▼
+           ┌─────────────┐
+           │ PreToolUse   │
+           │   Hook       │
+           └──────┬──────┘
+                  │
+          exit code == 0?
+           ╱              ╲
+         Yes               No
+          │                 │
+          ▼                 ▼
+   ┌────────────┐   ┌──────────────┐
+   │  执行工具   │   │  阻止执行     │
+   └─────┬──────┘   │  反馈给 Claude │
+         │          └──────────────┘
+         ▼
+  ┌─────────────┐
+  │ PostToolUse  │
+  │   Hook       │
+  └─────────────┘`}
+</div>
+
+### 实战示例：自动格式化
+
+每次 Claude 写入文件后自动运行 Prettier 格式化：
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx prettier --write $CLAUDE_FILE_PATH 2>/dev/null || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+注意末尾的 `|| true`——这确保即使 Prettier 遇到不支持的文件类型也不会导致错误。
+
+### 实战示例：阻止危险命令
+
+使用 PreToolUse Hook 拦截危险的 shell 命令：
+
+<pre><code>{`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "echo $CLAUDE_TOOL_INPUT | grep -q 'rm -rf /' && echo 'BLOCKED: dangerous rm -rf command' && exit 1 || exit 0"
+      }
+    ]
+  }
+}`}</code></pre>
+
+当 Claude 尝试执行包含 `rm -rf /` 的命令时，Hook 检测到危险模式，输出警告信息并以非零退出码退出，从而阻止命令执行。Claude 会收到 Hook 的输出，并据此调整行为。
+
+### 实战示例：自动测试
+
+每次编辑测试文件后自动运行对应的测试：
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "echo $CLAUDE_FILE_PATH | grep -q '\\.test\\.' && npm test -- --testPathPattern=$CLAUDE_FILE_PATH || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+### Hook 的输出反馈
+
+Hook 的标准输出（stdout）会被 Claude Code 捕获并反馈给 Claude 模型。这意味着 Hook 不仅能执行操作，还能**影响 Claude 的后续行为**。比如，一个 lint Hook 输出的错误信息会让 Claude 自动修复代码问题。
+
+### 使用建议
+
+- **保持命令轻量**：Hook 是同步执行的，长时间运行的命令会阻塞 Claude 的响应。
+- **处理错误优雅地**：使用 `|| true` 或 `2>/dev/null` 避免非预期的 Hook 失败导致工具被拦截。
+- **善用 PreToolUse 做防护**：确定性地阻止危险操作，而不是依赖 Claude 的判断。
+- **善用 PostToolUse 做后处理**：格式化、lint、测试等操作放在工具执行之后。
+- **项目级 vs 用户级**：团队共享的规则放在 `.claude/settings.json`，个人偏好放在 `~/.claude/settings.json`。
+
+</div>
+
+<div class="article-en">
+
+## Hooks: Event-Driven Automation
+
+In the world of Claude Code, **Hooks** are an event-driven automation mechanism. They are shell commands you pre-configure that execute automatically at specific lifecycle events within Claude Code. Think of them like Git Hooks — just as `pre-commit` and `post-commit` hooks work, Claude Code Hooks let you inject custom logic before and after tool calls.
+
+Unlike letting Claude autonomously decide whether to perform an action, Hooks provide **deterministic guarantees**: as long as the event fires, the command will execute. This is crucial for code formatting, linting, security enforcement, and similar scenarios.
+
+### Hook Types
+
+Claude Code supports five Hook event types:
+
+<div class="chapter-article__ascii">
+{`┌─────────────────┬──────────────────────────────────────────────┐
+│  Event Type     │  Description                                 │
+├─────────────────┼──────────────────────────────────────────────┤
+│  PreToolUse     │  Fires before tool execution; can block or   │
+│                 │  modify tool input                           │
+│  PostToolUse    │  Fires after tool execution; post-process    │
+│                 │  tool output                                 │
+│  Notification   │  Fires when Claude Code sends a notification │
+│  Stop           │  Fires when the main agent is about to stop  │
+│  SubagentStop   │  Fires when a subagent is about to stop      │
+└─────────────────┴──────────────────────────────────────────────┘`}
+</div>
+
+The most commonly used are **PreToolUse** and **PostToolUse**, which let you inject custom behavior before and after tool calls.
+
+### Configuration Format
+
+Hooks are configured in `.claude/settings.json` (project-level) or `~/.claude/settings.json` (user-level). The structure looks like this:
+
+<pre><code>{`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "command": "echo 'About to write a file: $CLAUDE_FILE_PATH'"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx prettier --write $CLAUDE_FILE_PATH"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "echo 'Claude has finished responding'"
+      }
+    ]
+  }
+}`}</code></pre>
+
+Each Hook entry contains:
+
+- **`matcher`** (optional): A string to match tool names. The Hook fires only when the tool name matches. Omitting matcher means it matches all tools.
+- **`command`**: The shell command to execute.
+
+### Matcher Rules
+
+The `matcher` field filters which tools trigger the Hook. It matches against tool names:
+
+<pre><code>{`// Only fires on Write tool calls
+{ "matcher": "Write", "command": "..." }
+
+// Only fires on Bash tool calls
+{ "matcher": "Bash", "command": "..." }
+
+// Fires on any tool call (matcher omitted)
+{ "command": "..." }`}</code></pre>
+
+### Environment Variables
+
+When a Hook command executes, Claude Code injects several environment variables so your script can access context about the current operation:
+
+- `$CLAUDE_FILE_PATH` — The file path being operated on
+- `$CLAUDE_TOOL_NAME` — The name of the tool that triggered the Hook
+- `$CLAUDE_TOOL_INPUT` — The tool's input parameters (JSON format)
+- `$CLAUDE_TOOL_OUTPUT` — The tool's output result (PostToolUse only)
+
+### Blocking Mechanism
+
+**PreToolUse** Hooks have a powerful capability: if the Hook command exits with a non-zero exit code, Claude Code will **block the tool from executing**. This lets you build security guardrails.
+
+<div class="chapter-article__ascii">
+{`User Request ──▶ Claude decides to call tool
+                       │
+                       ▼
+                ┌─────────────┐
+                │ PreToolUse   │
+                │   Hook       │
+                └──────┬──────┘
+                       │
+               exit code == 0?
+                ╱              ╲
+              Yes               No
+               │                 │
+               ▼                 ▼
+        ┌────────────┐   ┌──────────────┐
+        │ Execute     │   │  Block       │
+        │ Tool        │   │  Feedback to │
+        └─────┬──────┘   │  Claude      │
+              │          └──────────────┘
+              ▼
+       ┌─────────────┐
+       │ PostToolUse  │
+       │   Hook       │
+       └─────────────┘`}
+</div>
+
+### Example: Auto-Formatting
+
+Automatically run Prettier after every file write by Claude:
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "npx prettier --write $CLAUDE_FILE_PATH 2>/dev/null || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+Note the trailing `|| true` — this ensures that even if Prettier encounters an unsupported file type, it won't cause an error.
+
+### Example: Blocking Dangerous Commands
+
+Use a PreToolUse Hook to intercept dangerous shell commands:
+
+<pre><code>{`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "echo $CLAUDE_TOOL_INPUT | grep -q 'rm -rf /' && echo 'BLOCKED: dangerous rm -rf command' && exit 1 || exit 0"
+      }
+    ]
+  }
+}`}</code></pre>
+
+When Claude attempts to execute a command containing `rm -rf /`, the Hook detects the dangerous pattern, outputs a warning message, and exits with a non-zero code, blocking execution. Claude receives the Hook's output and adjusts its behavior accordingly.
+
+### Example: Auto-Testing
+
+Automatically run the corresponding test after editing a test file:
+
+<pre><code>{`{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "command": "echo $CLAUDE_FILE_PATH | grep -q '\\.test\\.' && npm test -- --testPathPattern=$CLAUDE_FILE_PATH || true"
+      }
+    ]
+  }
+}`}</code></pre>
+
+### Hook Output Feedback
+
+A Hook's standard output (stdout) is captured by Claude Code and fed back to the Claude model. This means Hooks can not only perform actions but also **influence Claude's subsequent behavior**. For instance, error messages output by a lint Hook will prompt Claude to automatically fix code issues.
+
+### Best Practices
+
+- **Keep commands lightweight**: Hooks execute synchronously — long-running commands block Claude's response.
+- **Handle errors gracefully**: Use `|| true` or `2>/dev/null` to avoid unintended Hook failures blocking tools.
+- **Use PreToolUse for guardrails**: Deterministically block dangerous operations rather than relying on Claude's judgment.
+- **Use PostToolUse for post-processing**: Put formatting, linting, and testing after tool execution.
+- **Project-level vs user-level**: Team-shared rules go in `.claude/settings.json`; personal preferences go in `~/.claude/settings.json`.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/codebase-intelligence`}>
+<span class="chapter-article__nav-label">上一章 Prev</span>
+<span class="chapter-article__nav-title">Ch.7 Codebase Intelligence</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/skills`}>
+<span class="chapter-article__nav-label">下一章 Next</span>
+<span class="chapter-article__nav-title">Ch.9 Skills</span>
+</a>
+</div>
+</div>

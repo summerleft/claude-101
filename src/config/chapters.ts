@@ -21,13 +21,14 @@ export const chapters: Chapter[] = [
   { id: 3, slug: 'tools', title: 'Tools', subtitle: '你有了手和脚', subtitleEn: 'You Now Have Hands and Feet', icon: '🛠', category: '工具与执行' },
   { id: 4, slug: 'agentic-loop', title: 'Agentic Loop', subtitle: '思考、行动、观察、重复', subtitleEn: 'Think, Act, Observe, Repeat', icon: '🔄', category: '工具与执行' },
   { id: 5, slug: 'mcp', title: 'MCP', subtitle: '连接外部世界', subtitleEn: 'Connecting to the Outside World', icon: '🔌', category: '工具与执行' },
-  { id: 6, slug: 'rag-memory', title: 'RAG & Memory', subtitle: '跨越遗忘的鸿沟', subtitleEn: 'Bridging the Gap of Forgetting', icon: '🧠', category: '记忆与知识' },
-  { id: 7, slug: 'hooks', title: 'Hooks', subtitle: '自动化的触发器', subtitleEn: 'Automated Triggers', icon: '⚡', category: '扩展能力' },
-  { id: 8, slug: 'skills', title: 'Skills', subtitle: '可复用的超能力', subtitleEn: 'Reusable Superpowers', icon: '✨', category: '扩展能力' },
-  { id: 9, slug: 'plugins', title: 'Plugins', subtitle: '打包你的超能力', subtitleEn: 'Package Your Superpowers', icon: '📦', category: '扩展能力' },
-  { id: 10, slug: 'agents', title: 'Agents & Subagents', subtitle: '分身术', subtitleEn: 'The Art of Cloning', icon: '👥', category: '协作与治理' },
-  { id: 11, slug: 'permissions', title: 'Permissions & Safety', subtitle: '信任的边界', subtitleEn: 'The Boundaries of Trust', icon: '🛡', category: '协作与治理' },
-  { id: 12, slug: 'configuration', title: 'Configuration', subtitle: '定制你的 Claude Code', subtitleEn: 'Customize Your Claude Code', icon: '⚙', category: '协作与治理' },
+  { id: 6, slug: 'memory', title: 'Memory', subtitle: '持久化的记忆', subtitleEn: 'Persistent Memory', icon: '🧠', category: '记忆与知识' },
+  { id: 7, slug: 'codebase-intelligence', title: 'Codebase Intelligence', subtitle: '代码库的理解与检索', subtitleEn: 'Understanding & Searching Your Codebase', icon: '🔍', category: '记忆与知识' },
+  { id: 8, slug: 'hooks', title: 'Hooks', subtitle: '自动化的触发器', subtitleEn: 'Automated Triggers', icon: '⚡', category: '扩展能力' },
+  { id: 9, slug: 'skills', title: 'Skills', subtitle: '可复用的超能力', subtitleEn: 'Reusable Superpowers', icon: '✨', category: '扩展能力' },
+  { id: 10, slug: 'plugins', title: 'Plugins', subtitle: '打包你的超能力', subtitleEn: 'Package Your Superpowers', icon: '📦', category: '扩展能力' },
+  { id: 11, slug: 'agents', title: 'Agents & Subagents', subtitle: '分身术', subtitleEn: 'The Art of Cloning', icon: '👥', category: '协作与治理' },
+  { id: 12, slug: 'permissions', title: 'Permissions & Safety', subtitle: '信任的边界', subtitleEn: 'The Boundaries of Trust', icon: '🛡', category: '协作与治理' },
+  { id: 13, slug: 'configuration', title: 'Configuration', subtitle: '定制你的 Claude Code', subtitleEn: 'Customize Your Claude Code', icon: '⚙', category: '协作与治理' },
 ];
 
 const categoryMeta: Record<string, { en: string; color: string }> = {

@@ -1,0 +1,309 @@
+---
+layout: '../../layouts/ChapterLayout.astro'
+chapter: 6
+title: 'Memory'
+subtitle: '持久化的记忆'
+---
+
+import Ch06Scenes from '../../chapters/ch06/Ch06Scenes';
+
+<Ch06Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+<h2>遗忘的问题</h2>
+
+<p>AI 有一个根本性的弱点：<strong>它没有持久记忆</strong>。每一次对话都是从零开始。昨天你告诉 Claude 的项目规范、编码风格、部署流程——今天它全部忘记了。上下文窗口就像一块白板，对话结束的那一刻，一切都被擦除。</p>
+
+<p>这对于一个需要深度理解项目的编码助手来说是致命的。想象一个新同事，每天早上来上班都失忆了——你必须从头解释一切。这就是没有记忆系统的 AI。</p>
+
+<p>Claude Code 通过多层记忆机制来解决这个问题。</p>
+
+<h2>记忆层级</h2>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────────────┐
+  │              Memory Hierarchy                    │
+  │                                                   │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 1: CLAUDE.md (持久化)              │     │
+  │  │  每次对话自动加载的项目说明书              │     │
+  │  │  ├── /project/CLAUDE.md                  │     │
+  │  │  ├── ~/.claude/CLAUDE.md                 │     │
+  │  │  └── /project/.claude/CLAUDE.md          │     │
+  │  └─────────────────────────────────────────┘     │
+  │                    ▲                              │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 2: Auto Memory (跨会话)            │     │
+  │  │  AI 自动记录的笔记                        │     │
+  │  │  ├── ~/.claude/projects/MEMORY.md        │     │
+  │  │  └── 用户偏好、项目发现、反馈记录         │     │
+  │  └─────────────────────────────────────────┘     │
+  │                    ▲                              │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 3: Conversation Context (临时)     │     │
+  │  │  当前对话中的所有消息和工具结果           │     │
+  │  │  对话结束后消失                           │     │
+  │  └─────────────────────────────────────────┘     │
+  └─────────────────────────────────────────────────┘
+`}</div>
+
+<h2>CLAUDE.md：持久化记忆</h2>
+
+<p><code>CLAUDE.md</code> 是 Claude Code 最重要的记忆机制。它是一个 Markdown 文件，在<strong>每次对话开始时自动加载到上下文中</strong>。你可以把它看作是给 Claude 写的"员工手册"。</p>
+
+<p>Claude Code 会从三个位置读取 CLAUDE.md：</p>
+
+<ul>
+<li><code>~/. claude/CLAUDE.md</code> — 全局配置，适用于所有项目</li>
+<li><code>/project/CLAUDE.md</code> — 项目级配置，提交到 Git 与团队共享</li>
+<li><code>/project/.claude/CLAUDE.md</code> — 个人项目配置，可加入 .gitignore</li>
+</ul>
+
+<h3>如何有效地编写 CLAUDE.md</h3>
+
+<p>一个好的 CLAUDE.md 应该包含：</p>
+
+<pre><code>{`# 项目名称
+
+## 技术栈
+- 框架: Next.js 14 (App Router)
+- 语言: TypeScript (strict mode)
+- 样式: Tailwind CSS v4
+- 数据库: PostgreSQL + Prisma ORM
+- 测试: Vitest + Playwright
+
+## 项目结构
+src/
+  app/          # 页面和路由
+  components/   # React 组件
+  lib/          # 工具函数和业务逻辑
+  prisma/       # 数据库 schema
+
+## 开发命令
+npm run dev     # 启动开发服务器
+npm run test    # 运行测试
+npm run lint    # 代码检查
+
+## 编码规范
+- 使用函数式组件和 hooks
+- 所有组件需要有 TypeScript 类型定义
+- 变量命名使用 camelCase
+- 文件命名使用 kebab-case
+- 提交信息使用 Conventional Commits
+
+## 重要约定
+- API 路由统一在 src/app/api/ 下
+- 所有数据库操作通过 Prisma Client
+- 不要直接修改 prisma/migrations/ 目录`}</code></pre>
+
+<p>关键原则：<strong>简洁、具体、可操作</strong>。不要写散文，写指令。Claude 会忠实地遵循 CLAUDE.md 中的每一条规则。</p>
+
+<h2>"记忆"与"上下文"的区别</h2>
+
+<p>理解这两个概念的区别至关重要：</p>
+
+<ul>
+<li><strong>记忆（Memory）</strong>：持久化的信息，跨对话存在。包括 CLAUDE.md、项目配置、用户偏好。每次对话都可以访问。</li>
+<li><strong>上下文（Context）</strong>：临时的信息，仅存在于当前对话。包括对话消息、工具调用结果、读取的文件内容。对话结束后消失。</li>
+</ul>
+
+<pre><code>{`Memory (持久)                    Context (临时)
+┌─────────────┐                ┌─────────────┐
+│ CLAUDE.md   │  ──加载──▶    │ 系统提示词   │
+│ settings    │                │ 对话历史     │
+│ 用户偏好    │                │ 工具结果     │
+│ 项目配置    │                │ 文件内容     │
+└─────────────┘                └─────────────┘
+  跨会话保留                      对话结束消失`}</code></pre>
+
+<h2>Claude Code 的记忆类型</h2>
+
+<p>Claude Code 管理几种不同类型的记忆：</p>
+
+<h3>用户偏好</h3>
+<p>存储在 <code>~/.claude/</code> 中。包括全局设置、常用的 MCP 配置、个人编码偏好。适用于所有项目。</p>
+
+<h3>项目上下文</h3>
+<p>存储在项目的 <code>CLAUDE.md</code> 和 <code>.claude/</code> 目录中。包括技术栈、编码规范、项目结构。与团队共享。</p>
+
+<h3>会话反馈</h3>
+<p>当你在对话中纠正 Claude 的行为时（"不要用 var，用 const"），Claude 可以将这个反馈保存为持久记忆，下次对话自动遵循。</p>
+
+<h3>自动记忆</h3>
+<p>Claude Code 可以在对话结束时自动提取关键信息并保存。例如，如果它在调试过程中发现了项目的一个重要模式，它会建议将其记录到 CLAUDE.md 中。</p>
+
+<h2>实际工作流</h2>
+
+<p>把这些机制组合起来，Claude Code 在一次典型的编码会话中是这样工作的：</p>
+
+<ol>
+<li><strong>加载记忆</strong>：读取 CLAUDE.md，加载项目配置</li>
+<li><strong>理解任务</strong>：解析用户的请求</li>
+<li><strong>按需检索</strong>：使用 Glob/Grep/Read 获取相关代码</li>
+<li><strong>执行任务</strong>：在 Agentic Loop 中编辑代码、运行测试</li>
+<li><strong>压缩上下文</strong>：如果对话太长，自动摘要早期内容</li>
+<li><strong>更新记忆</strong>：如果发现新的重要信息，建议保存到 CLAUDE.md</li>
+</ol>
+
+<p>正是这套多层记忆系统，让 Claude Code 能够跨越遗忘的鸿沟——虽然每次对话仍然从新的上下文开始，但持久化的记忆确保了关键知识永不丢失。</p>
+
+</div>
+
+<div class="article-en">
+
+<h2>The Forgetting Problem</h2>
+
+<p>AI has a fundamental weakness: <strong>it has no persistent memory</strong>. Every conversation starts from scratch. The project specs, coding styles, and deployment processes you told Claude yesterday — today it has forgotten everything. The context window is like a whiteboard that gets erased the moment the conversation ends.</p>
+
+<p>This is fatal for a coding assistant that needs deep project understanding. Imagine a new colleague who wakes up with amnesia every morning — you have to explain everything from the beginning. That is AI without a memory system.</p>
+
+<p>Claude Code solves this with a multi-layered memory mechanism.</p>
+
+<h2>Memory Hierarchy</h2>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────────────┐
+  │              Memory Hierarchy                    │
+  │                                                   │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 1: CLAUDE.md (Persistent)         │     │
+  │  │  Project manual loaded every conversation │     │
+  │  │  ├── /project/CLAUDE.md                  │     │
+  │  │  ├── ~/.claude/CLAUDE.md                 │     │
+  │  │  └── /project/.claude/CLAUDE.md          │     │
+  │  └─────────────────────────────────────────┘     │
+  │                    ▲                              │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 2: Auto Memory (Cross-session)     │     │
+  │  │  Notes the AI records while working       │     │
+  │  │  ├── ~/.claude/projects/MEMORY.md        │     │
+  │  │  └── Preferences, discoveries, feedback  │     │
+  │  └─────────────────────────────────────────┘     │
+  │                    ▲                              │
+  │  ┌─────────────────────────────────────────┐     │
+  │  │  Layer 3: Conversation Context (Ephemeral)│     │
+  │  │  All messages and tool results            │     │
+  │  │  Disappears after conversation ends       │     │
+  │  └─────────────────────────────────────────┘     │
+  └─────────────────────────────────────────────────┘
+`}</div>
+
+<h2>CLAUDE.md: Persistent Memory</h2>
+
+<p><code>CLAUDE.md</code> is Claude Code's most important memory mechanism. It is a Markdown file that is <strong>automatically loaded into context at the start of every conversation</strong>. Think of it as an "employee handbook" written for Claude.</p>
+
+<p>Claude Code reads CLAUDE.md from three locations:</p>
+
+<ul>
+<li><code>~/.claude/CLAUDE.md</code> — Global config, applies to all projects</li>
+<li><code>/project/CLAUDE.md</code> — Project-level config, committed to Git and shared with the team</li>
+<li><code>/project/.claude/CLAUDE.md</code> — Personal project config, can be added to .gitignore</li>
+</ul>
+
+<h3>How to Write an Effective CLAUDE.md</h3>
+
+<p>A good CLAUDE.md should contain:</p>
+
+<pre><code>{`# Project Name
+
+## Tech Stack
+- Framework: Next.js 14 (App Router)
+- Language: TypeScript (strict mode)
+- Styling: Tailwind CSS v4
+- Database: PostgreSQL + Prisma ORM
+- Testing: Vitest + Playwright
+
+## Project Structure
+src/
+  app/          # Pages and routes
+  components/   # React components
+  lib/          # Utilities and business logic
+  prisma/       # Database schema
+
+## Dev Commands
+npm run dev     # Start dev server
+npm run test    # Run tests
+npm run lint    # Lint code
+
+## Coding Standards
+- Use functional components and hooks
+- All components must have TypeScript type definitions
+- Variable naming: camelCase
+- File naming: kebab-case
+- Commit messages: Conventional Commits
+
+## Important Conventions
+- API routes go under src/app/api/
+- All DB operations through Prisma Client
+- Never directly modify prisma/migrations/`}</code></pre>
+
+<p>Key principles: <strong>concise, specific, actionable</strong>. Don't write prose — write directives. Claude faithfully follows every rule in CLAUDE.md.</p>
+
+<h2>The Difference Between "Memory" and "Context"</h2>
+
+<p>Understanding the distinction between these two concepts is crucial:</p>
+
+<ul>
+<li><strong>Memory</strong>: Persistent information that exists across conversations. Includes CLAUDE.md, project settings, user preferences. Accessible in every conversation.</li>
+<li><strong>Context</strong>: Ephemeral information that exists only in the current conversation. Includes conversation messages, tool call results, file contents read. Disappears when the conversation ends.</li>
+</ul>
+
+<pre><code>{`Memory (Persistent)              Context (Ephemeral)
+┌─────────────┐                ┌─────────────┐
+│ CLAUDE.md   │  ──loaded──▶  │ System prompt│
+│ settings    │                │ Chat history │
+│ Preferences │                │ Tool results │
+│ Project cfg │                │ File content │
+└─────────────┘                └─────────────┘
+  Persists across                Disappears after
+  sessions                       conversation ends`}</code></pre>
+
+<h2>Memory Types in Claude Code</h2>
+
+<p>Claude Code manages several different types of memory:</p>
+
+<h3>User Preferences</h3>
+<p>Stored in <code>~/.claude/</code>. Includes global settings, common MCP configurations, personal coding preferences. Applies to all projects.</p>
+
+<h3>Project Context</h3>
+<p>Stored in the project's <code>CLAUDE.md</code> and <code>.claude/</code> directory. Includes tech stack, coding standards, project structure. Shared with the team.</p>
+
+<h3>Session Feedback</h3>
+<p>When you correct Claude's behavior during a conversation ("don't use var, use const"), Claude can save this feedback as persistent memory, automatically following it in future conversations.</p>
+
+<h3>Auto Memory</h3>
+<p>Claude Code can automatically extract key information at the end of a conversation and save it. For example, if it discovers an important pattern in the project during debugging, it will suggest recording it in CLAUDE.md.</p>
+
+<h2>The Complete Workflow</h2>
+
+<p>Combining all these mechanisms, here is how Claude Code works in a typical coding session:</p>
+
+<ol>
+<li><strong>Load memory</strong>: Read CLAUDE.md, load project configuration</li>
+<li><strong>Understand task</strong>: Parse the user's request</li>
+<li><strong>On-demand retrieval</strong>: Use Glob/Grep/Read to fetch relevant code</li>
+<li><strong>Execute task</strong>: Edit code, run tests in the Agentic Loop</li>
+<li><strong>Compact context</strong>: If conversation is too long, auto-summarize earlier content</li>
+<li><strong>Update memory</strong>: If important new info is discovered, suggest saving to CLAUDE.md</li>
+</ol>
+
+<p>It is this multi-layered memory system that allows Claude Code to bridge the gap of forgetting — though each conversation still starts with a fresh context, persistent memory ensures critical knowledge is never lost.</p>
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/mcp`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.5 MCP</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/codebase-intelligence`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.7 Codebase Intelligence</span>
+</a>
+</div>
+
+</div>

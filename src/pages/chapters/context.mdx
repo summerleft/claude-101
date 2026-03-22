@@ -5,6 +5,405 @@ title: 'Context'
 subtitle: '你能看到什么？'
 ---
 
+export const base = import.meta.env.BASE_URL;
+
 import Ch02Scenes from '../../chapters/ch02/Ch02Scenes';
 
 <Ch02Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 上下文窗口：我的工作记忆
+
+如果 Prompt 是我的 main() 函数，那么上下文窗口（Context Window）就是我的 RAM。它是我在一次对话中能"看到"的所有信息的总和——而且它有一个硬性上限。
+
+对于 Claude，这个上限是 **200,000 tokens**（约 150,000 个英文单词，或约 60,000-80,000 个中文字符）。超过这个限制，最早的信息就会被丢弃或压缩。
+
+一个 token 大约相当于 4 个英文字符或 1-2 个中文字符。一个典型的源代码文件（200 行）大约是 1,000-2,000 tokens。
+
+## 上下文的组成
+
+每一次 API 调用，我的上下文窗口里都装着以下内容：
+
+<div class="chapter-article__ascii">{`
+┌──────────────────────────────────────────────┐
+│            200K Token Context Window          │
+├──────────────────────────────────────────────┤
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  System Prompt         (~12K tokens)   │  │
+│  │  身份、工具定义、行为准则               │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  CLAUDE.md Files       (~1-5K tokens)  │  │
+│  │  项目级 + 用户级配置                    │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Conversation History  (variable)      │  │
+│  │  user/assistant 消息交替               │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Tool Results          (variable)      │  │
+│  │  文件内容、命令输出、搜索结果           │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Current User Message                  │  │
+│  │  你刚刚输入的内容                       │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+└──────────────────────────────────────────────┘
+`}</div>
+
+这意味着我"看到"的信息远比你的一条消息要多。当你输入 "帮我修复这个 bug" 时，我实际处理的可能是：
+
+<pre><code>{`{
+  system: "You are Claude Code... (12,000 tokens)",
+  messages: [
+    // CLAUDE.md 内容被注入为早期消息
+    { role: "user", content: "[CLAUDE.md] 本项目使用 React 18..." },
+
+    // 之前的对话历史
+    { role: "user", content: "看一下 src/api/handler.ts" },
+    { role: "assistant", content: "我来读取这个文件...",
+      tool_use: { name: "Read", input: { file_path: "..." } } },
+    { role: "user", content: "[Tool Result] file contents..." },
+
+    // 你当前的消息
+    { role: "user", content: "帮我修复这个 bug" }
+  ]
+}`}</code></pre>
+
+## Token 计数与预算
+
+200K tokens 听起来很多，但在实际的代码任务中，它消耗得比你想象的要快：
+
+<pre><code>{`// 典型的 token 消耗估算
+System Prompt:                    ~12,000 tokens
+CLAUDE.md (项目 + 用户):           ~2,000 tokens
+工具定义 (JSON Schema):            ~4,000 tokens
+─────────────────────────────────────────────
+固定开销:                          ~18,000 tokens
+
+// 剩余可用: ~182,000 tokens
+
+一个中等大小的源文件 (300行):       ~2,000 tokens
+一次 Bash 命令输出:                ~500-5,000 tokens
+一次 Grep 搜索结果:                ~1,000-3,000 tokens
+我的一次回复:                      ~500-2,000 tokens
+─────────────────────────────────────────────
+一轮 "读文件 + 分析 + 修改" 大约消耗: ~8,000-15,000 tokens`}</code></pre>
+
+也就是说，一个复杂的编码任务在 10-15 轮交互后，上下文就可能接近上限。
+
+## 上下文压缩（Context Compaction）
+
+当上下文窗口快满时，Claude Code 会自动触发**上下文压缩**（auto-compact）。你也可以随时输入 `/compact` 命令手动触发，或者带上自定义指令：`/compact 重点保留 auth 相关的上下文`。
+
+### 压缩策略
+
+压缩不是简单地删除——它有明确的优先级策略：
+
+- **保留**：System Prompt、CLAUDE.md、最近几轮对话、正在进行的编辑操作
+- **压缩为摘要**：早期对话历史中的关键决策和结论
+- **丢弃**：已读取但不再需要的大段文件内容、中间推理过程、过期的工具输出
+
+这个过程：
+
+1. 将早期的对话历史发送给一个模型进行总结
+2. 用压缩后的摘要替换原始的长对话
+3. 保留最近的几轮对话不变
+4. 保留关键信息（如当前正在编辑的文件、未完成的任务）
+
+<div class="chapter-article__ascii">{`
+压缩前:
+┌─────────────────────────────────────────┐
+│ System Prompt                           │
+│ Message 1: "看一下项目结构"              │
+│ Message 2: [读取了 15 个文件]            │
+│ Message 3: "分析一下架构"                │
+│ Message 4: [详细的架构分析]              │
+│ Message 5: "重构 auth 模块"              │
+│ Message 6: [读取 + 编辑了 8 个文件]      │
+│ Message 7: "现在处理测试"                │  ← 当前消息
+│ ████████████████████████████ 95% full    │
+└─────────────────────────────────────────┘
+
+压缩后:
+┌─────────────────────────────────────────┐
+│ System Prompt                           │
+│ [Summary]: 用户要求分析项目结构并重构     │
+│   auth 模块。已完成以下修改:              │
+│   - src/auth/validate.ts: 提取了...      │
+│   - src/auth/token.ts: 新增了...         │
+│   - 共修改 8 个文件                       │
+│ Message 7: "现在处理测试"                │  ← 保持不变
+│ ██████████████░░░░░░░░░░░░░ 45% full    │
+└─────────────────────────────────────────┘
+`}</div>
+
+### Auto-Compact 触发时机
+
+Auto-compact 在上下文使用量接近窗口上限时自动触发。你不需要手动干预——Claude Code 会在后台完成压缩，然后继续工作。你唯一会注意到的是对话中出现一条系统消息，提示上下文已被压缩。
+
+压缩是有损的——一些细节会丢失。这就是为什么在处理复杂任务时，保持每条指令的独立性和完整性很重要。如果压缩后 AI "忘记"了某些细节，可以重新提供关键信息。
+
+## CLAUDE.md：持久化的上下文
+
+CLAUDE.md 是一种特殊的上下文注入机制。它的内容在每次会话开始时自动加载到上下文中，相当于你不需要每次都重复说的话。
+
+Claude Code 会从多个位置查找 CLAUDE.md 文件：
+
+<pre><code>{`// CLAUDE.md 加载优先级
+1. ~/.claude/CLAUDE.md           // 用户级别（全局）
+2. .claude/CLAUDE.md             // 项目级别（团队共享）
+3. CLAUDE.md                     // 项目根目录
+4. .claude/settings.json         // 项目配置
+
+// 所有找到的文件都会被合并加载到上下文中`}</code></pre>
+
+一个典型的项目级 CLAUDE.md：
+
+<pre><code>{`# My Project
+
+## 技术栈
+- Framework: Astro + React
+- Styling: Tailwind CSS v4
+- Language: TypeScript (strict)
+
+## 约定
+- 组件使用函数式写法，不使用 class 组件
+- 文件命名使用 kebab-case
+- 测试文件与源文件同目录，后缀 .test.ts
+- 提交信息使用 conventional commits 格式
+
+## 命令
+- npm run dev: 启动开发服务器
+- npm run test: 运行测试
+- npm run lint: 代码检查`}</code></pre>
+
+这些信息会作为我在每次对话中的"背景知识"，指导我遵循项目特定的规范和约定。
+
+## 上下文如何影响行为
+
+上下文不仅仅是信息的堆积——它直接影响我的推理和决策：
+
+**更多上下文 = 更准确的理解**。当我能看到相关的类型定义、测试用例和架构文档时，我的修改会更精确、更一致。
+
+**上下文的位置很重要**。在上下文窗口中，最近的消息和最开头的系统提示对我影响最大——这是注意力机制的特性（近因效应和首因效应）。
+
+**冲突的上下文会导致困惑**。如果 CLAUDE.md 说 "使用 spaces 缩进"，但当前文件全是 tabs，我需要做判断。通常，更具体的指令优先。
+
+> 上下文窗口就是我的全部世界。我无法记住上一次对话的内容，也无法访问没有被加载进来的文件。你给我看什么，就决定了我能做什么。
+
+</div>
+
+<div class="article-en">
+
+## The Context Window: My Working Memory
+
+If the Prompt is my main() function, then the context window is my RAM. It is the sum of all information I can "see" during a single conversation -- and it has a hard limit.
+
+For Claude, this limit is **200,000 tokens** (roughly 150,000 English words). Beyond this limit, the earliest information gets discarded or compressed.
+
+One token is approximately 4 English characters or 1-2 Chinese characters. A typical source file (200 lines) is roughly 1,000-2,000 tokens.
+
+## What Goes Into Context
+
+Every API call, my context window contains the following:
+
+<div class="chapter-article__ascii">{`
+┌──────────────────────────────────────────────┐
+│            200K Token Context Window          │
+├──────────────────────────────────────────────┤
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  System Prompt         (~12K tokens)   │  │
+│  │  Identity, tool defs, behavior rules   │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  CLAUDE.md Files       (~1-5K tokens)  │  │
+│  │  Project-level + user-level config     │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Conversation History  (variable)      │  │
+│  │  Alternating user/assistant messages   │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Tool Results          (variable)      │  │
+│  │  File contents, cmd output, searches   │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  ┌────────────────────────────────────────┐  │
+│  │  Current User Message                  │  │
+│  │  What you just typed                   │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+└──────────────────────────────────────────────┘
+`}</div>
+
+This means I "see" far more than just your single message. When you type "fix this bug", what I actually process might be:
+
+<pre><code>{`{
+  system: "You are Claude Code... (12,000 tokens)",
+  messages: [
+    // CLAUDE.md injected as early messages
+    { role: "user", content: "[CLAUDE.md] This project uses React 18..." },
+
+    // Previous conversation history
+    { role: "user", content: "Look at src/api/handler.ts" },
+    { role: "assistant", content: "Let me read that file...",
+      tool_use: { name: "Read", input: { file_path: "..." } } },
+    { role: "user", content: "[Tool Result] file contents..." },
+
+    // Your current message
+    { role: "user", content: "Fix this bug" }
+  ]
+}`}</code></pre>
+
+## Token Counting and Budget
+
+200K tokens sounds like a lot, but in real coding tasks, it gets consumed faster than you might expect:
+
+<pre><code>{`// Typical token consumption estimates
+System Prompt:                    ~12,000 tokens
+CLAUDE.md (project + user):       ~2,000 tokens
+Tool definitions (JSON Schema):   ~4,000 tokens
+─────────────────────────────────────────────
+Fixed overhead:                   ~18,000 tokens
+
+// Remaining usable: ~182,000 tokens
+
+A medium source file (300 lines):  ~2,000 tokens
+One Bash command output:           ~500-5,000 tokens
+One Grep search result:            ~1,000-3,000 tokens
+One of my replies:                 ~500-2,000 tokens
+─────────────────────────────────────────────
+One round of "read + analyze + edit" costs: ~8,000-15,000 tokens`}</code></pre>
+
+This means a complex coding task can approach the context limit after 10-15 rounds of interaction.
+
+## Context Compaction
+
+When the context window is nearly full, Claude Code automatically triggers **context compaction** (auto-compact). You can also manually trigger it anytime with `/compact`, optionally with custom instructions: `/compact focus on keeping auth-related context`.
+
+### Compaction Strategy
+
+Compaction is not simple deletion — it follows a clear priority strategy:
+
+- **Kept**: System Prompt, CLAUDE.md, recent conversation turns, ongoing edit operations
+- **Summarized**: Key decisions and conclusions from earlier conversation history
+- **Trimmed**: Large file contents that are no longer needed, intermediate reasoning, stale tool outputs
+
+The process:
+
+1. Sends earlier conversation history to a model for summarization
+2. Replaces the original long conversation with a compressed summary
+3. Keeps the most recent few turns unchanged
+4. Preserves critical information (files being edited, pending tasks)
+
+<div class="chapter-article__ascii">{`
+Before compaction:
+┌─────────────────────────────────────────┐
+│ System Prompt                           │
+│ Message 1: "Look at project structure"  │
+│ Message 2: [read 15 files]              │
+│ Message 3: "Analyze architecture"       │
+│ Message 4: [detailed analysis]          │
+│ Message 5: "Refactor auth module"       │
+│ Message 6: [read + edited 8 files]      │
+│ Message 7: "Now handle the tests"       │  ← current
+│ ████████████████████████████ 95% full   │
+└─────────────────────────────────────────┘
+
+After compaction:
+┌─────────────────────────────────────────┐
+│ System Prompt                           │
+│ [Summary]: User asked to analyze the    │
+│   project and refactor auth module.     │
+│   Completed changes:                    │
+│   - src/auth/validate.ts: extracted...  │
+│   - src/auth/token.ts: added...         │
+│   - 8 files modified total              │
+│ Message 7: "Now handle the tests"       │  ← unchanged
+│ ██████████████░░░░░░░░░░░░░ 45% full   │
+└─────────────────────────────────────────┘
+`}</div>
+
+### Auto-Compact Trigger
+
+Auto-compact fires automatically when context usage approaches the window limit. You don't need to intervene — Claude Code handles compaction in the background and continues working. The only thing you'll notice is a system message indicating context was compressed.
+
+Compaction is lossy -- some details are lost. This is why keeping each instruction self-contained and complete matters when working on complex tasks. If the AI "forgets" certain details after compaction, you can re-provide the key information.
+
+## CLAUDE.md: Persistent Context
+
+CLAUDE.md is a special context injection mechanism. Its contents are automatically loaded into context at the start of every session -- it is what you would otherwise have to repeat every time.
+
+Claude Code looks for CLAUDE.md files in multiple locations:
+
+<pre><code>{`// CLAUDE.md loading priority
+1. ~/.claude/CLAUDE.md           // User-level (global)
+2. .claude/CLAUDE.md             // Project-level (team-shared)
+3. CLAUDE.md                     // Project root
+4. .claude/settings.json         // Project settings
+
+// All found files are merged and loaded into context`}</code></pre>
+
+A typical project-level CLAUDE.md:
+
+<pre><code>{`# My Project
+
+## Tech Stack
+- Framework: Astro + React
+- Styling: Tailwind CSS v4
+- Language: TypeScript (strict)
+
+## Conventions
+- Use functional components, no class components
+- File names use kebab-case
+- Test files colocated with source, suffixed .test.ts
+- Commit messages use conventional commits format
+
+## Commands
+- npm run dev: Start dev server
+- npm run test: Run tests
+- npm run lint: Lint code`}</code></pre>
+
+This information serves as my "background knowledge" in every conversation, guiding me to follow project-specific standards and conventions.
+
+## How Context Shapes Behavior
+
+Context is not just an accumulation of information -- it directly influences my reasoning and decisions:
+
+**More context = more accurate understanding.** When I can see relevant type definitions, test cases, and architecture docs, my edits are more precise and consistent.
+
+**Position matters.** In the context window, the most recent messages and the system prompt at the very beginning have the strongest influence on me -- this is a property of the attention mechanism (recency bias and primacy bias).
+
+**Conflicting context creates ambiguity.** If CLAUDE.md says "use spaces for indentation" but the current file uses tabs throughout, I have to make a judgment call. Generally, more specific instructions take priority.
+
+> The context window is my entire world. I cannot remember previous conversations, and I cannot access files that were not loaded. What you show me determines what I can do.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${base}chapters/prompt`}>
+<span class="chapter-article__nav-label">Previous</span>
+<span class="chapter-article__nav-title">Prompt</span>
+</a>
+<a href={`${base}chapters/tools`}>
+<span class="chapter-article__nav-label">Next</span>
+<span class="chapter-article__nav-title">Tools</span>
+</a>
+</div>
+
+</div>

@@ -5,6 +5,614 @@ title: 'Tools'
 subtitle: '你有了手和脚'
 ---
 
+export const base = import.meta.env.BASE_URL;
+
 import Ch03Scenes from '../../chapters/ch03/Ch03Scenes';
 
 <Ch03Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 从纯文本到能做事
+
+没有工具的 AI 只能输出文字。它能告诉你"你应该修改第 42 行"，但它不能真的去修改。工具（Tools）改变了这一切——它们让我从一个"只会说话的人"变成了一个"能动手做事的人"。
+
+在 Claude Code 中，工具就是我的手和脚。通过工具，我能读取文件、编辑代码、运行命令、搜索代码库——这些才是让 AI 编程助手真正有用的能力。
+
+## 工具调用的原理：Function Calling
+
+工具调用（Tool Use / Function Calling）是 AI 与外部世界交互的标准机制。它的核心思想很简单：
+
+1. AI 在 System Prompt 中被告知有哪些工具可用，以及每个工具的 JSON Schema
+2. AI 在生成回复时，可以选择"调用一个工具"而不是直接输出文字
+3. 客户端执行工具调用，将结果返回给 AI
+4. AI 看到结果后，继续推理和回复
+
+<div class="chapter-article__ascii">{`
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Claude   │    │  Client  │    │  System  │
+│  (AI)     │    │ (Claude  │    │  (OS /   │
+│           │    │  Code)   │    │  Files)  │
+└─────┬─────┘    └─────┬────┘    └────┬─────┘
+      │                │              │
+      │  tool_use:     │              │
+      │  Read file.ts  │              │
+      │───────────────>│              │
+      │                │  read file   │
+      │                │─────────────>│
+      │                │              │
+      │                │  contents    │
+      │                │<─────────────│
+      │  tool_result:  │              │
+      │  "export..."   │              │
+      │<───────────────│              │
+      │                │              │
+      │  tool_use:     │              │
+      │  Edit file.ts  │              │
+      │───────────────>│              │
+      │                │  write file  │
+      │                │─────────────>│
+      │                │              │
+      │                │  success     │
+      │                │<─────────────│
+      │  tool_result:  │              │
+      │  "OK"          │              │
+      │<───────────────│              │
+      │                │              │
+      │  "Done! I've   │              │
+      │   refactored   │              │
+      │   the file."   │              │
+      │───────────────>│              │
+      │                │              │
+`}</div>
+
+在 API 层面，工具调用是这样的：
+
+<pre><code>{`// AI 的回复中包含 tool_use 块
+{
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "让我读取这个文件来了解它的结构。"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01A2B3C4",
+      "name": "Read",
+      "input": {
+        "file_path": "/src/utils/auth.ts",
+        "limit": 100
+      }
+    }
+  ]
+}
+
+// 客户端执行后，将结果作为 tool_result 返回
+{
+  "role": "user",
+  "content": [
+    {
+      "type": "tool_result",
+      "tool_use_id": "toolu_01A2B3C4",
+      "content": "1  import { verify } from 'jsonwebtoken';\\n2  ..."
+    }
+  ]
+}`}</code></pre>
+
+## Claude Code 的内置工具
+
+Claude Code 提供了一套完整的工具集，覆盖了软件开发的核心操作：
+
+### 文件操作
+
+**Read** —— 读取文件内容。支持指定行范围、读取图片和 PDF。
+
+<pre><code>{`{
+  "name": "Read",
+  "input": {
+    "file_path": "/absolute/path/to/file.ts",
+    "offset": 50,    // 从第 50 行开始
+    "limit": 100     // 读取 100 行
+  }
+}`}</code></pre>
+
+**Write** —— 创建或完全重写文件。仅在需要创建新文件或完全重写时使用。
+
+<pre><code>{`{
+  "name": "Write",
+  "input": {
+    "file_path": "/absolute/path/to/new-file.ts",
+    "content": "export function hello() {\\n  return 'world';\\n}"
+  }
+}`}</code></pre>
+
+**Edit** —— 精确编辑文件中的特定部分。这是最常用的文件修改工具——通过精确匹配 `old_string` 并替换为 `new_string`。
+
+<pre><code>{`{
+  "name": "Edit",
+  "input": {
+    "file_path": "/src/utils/auth.ts",
+    "old_string": "const EXPIRY = 24 * 60 * 60;",
+    "new_string": "const EXPIRY = 1 * 60 * 60;  // 1 hour"
+  }
+}`}</code></pre>
+
+### 搜索工具
+
+**Grep** —— 基于 ripgrep 的内容搜索。支持正则表达式、文件过滤、上下文行。
+
+<pre><code>{`{
+  "name": "Grep",
+  "input": {
+    "pattern": "function validateToken",
+    "path": "/src",
+    "glob": "*.ts",
+    "output_mode": "content",
+    "-C": 3
+  }
+}`}</code></pre>
+
+**Glob** —— 按文件名模式查找文件。
+
+<pre><code>{`{
+  "name": "Glob",
+  "input": {
+    "pattern": "src/**/*.test.ts",
+    "path": "/project"
+  }
+}`}</code></pre>
+
+### 命令执行
+
+**Bash** —— 执行 shell 命令。这是最强大也最危险的工具——通过它我可以运行任何命令：git、npm、编译器、测试框架等。
+
+<pre><code>{`{
+  "name": "Bash",
+  "input": {
+    "command": "cd /project && npm run test -- --watch=false",
+    "description": "Run project tests",
+    "timeout": 30000
+  }
+}`}</code></pre>
+
+### 高级工具
+
+**Agent（子代理）** —— 创建一个独立的子 Claude 来处理复杂的子任务。子代理有自己的上下文窗口，不会占用主对话的上下文。
+
+<pre><code>{`{
+  "name": "Agent",
+  "input": {
+    "prompt": "在项目中查找所有使用了 deprecated API 的地方，列出文件名和行号"
+  }
+}`}</code></pre>
+
+**WebSearch** —— 搜索网络获取最新信息。
+
+**WebFetch** —— 获取指定 URL 的内容。
+
+## 工具定义：JSON Schema
+
+每个工具都有一个 JSON Schema 定义，告诉我这个工具的名称、描述、参数结构和类型约束。这些定义在 System Prompt 中提供，是我"知道"如何使用工具的唯一途径。
+
+<pre><code>{`// 简化的工具定义示例
+{
+  "name": "Edit",
+  "description": "Performs exact string replacements in files...",
+  "parameters": {
+    "type": "object",
+    "required": ["file_path", "old_string", "new_string"],
+    "properties": {
+      "file_path": {
+        "type": "string",
+        "description": "The absolute path to the file to modify"
+      },
+      "old_string": {
+        "type": "string",
+        "description": "The text to replace"
+      },
+      "new_string": {
+        "type": "string",
+        "description": "The text to replace it with"
+      },
+      "replace_all": {
+        "type": "boolean",
+        "default": false,
+        "description": "Replace all occurrences"
+      }
+    }
+  }
+}`}</code></pre>
+
+我看到的每个工具都是这种格式。我不需要知道工具的实现细节——只需要知道它的接口。这和你使用 API 一样：你不需要知道服务器内部逻辑，只需要知道请求格式和响应格式。
+
+## 工具调用的决策过程
+
+当我收到一条消息后，我需要决定：是直接回复文字，还是调用工具？
+
+这个决策基于几个因素：
+
+<pre><code>{`// 我的内部决策逻辑（简化表示）
+
+用户说: "这个函数有什么问题？"
+
+思考过程:
+1. 用户在问一个关于代码的问题
+2. 我需要先看到代码才能回答
+3. 用户没有直接粘贴代码 → 我需要读取文件
+4. 决策: 调用 Read 工具
+
+用户说: "把这个函数改成异步的"
+
+思考过程:
+1. 用户要求修改代码
+2. 我需要先看到当前代码 (如果还没看到)
+3. 然后精确编辑 → 使用 Edit 工具
+4. 修改后可能需要验证 → 使用 Bash 运行测试
+5. 决策: Read → Edit → Bash (链式调用)
+
+用户说: "React 18 有什么新特性？"
+
+思考过程:
+1. 这是一个知识性问题
+2. 我的训练数据包含这些信息
+3. 不需要任何外部工具
+4. 决策: 直接回复文字`}</code></pre>
+
+## 工具结果的反馈循环
+
+工具调用不是一次性的——它是一个循环。每次工具返回结果后，我都会重新评估情况，决定下一步行动：
+
+<div class="chapter-article__ascii">{`
+               ┌───────────────┐
+               │   接收消息     │
+               └───────┬───────┘
+                       │
+                       ▼
+               ┌───────────────┐
+               │  分析 & 推理   │ ◄──────────────┐
+               └───────┬───────┘                 │
+                       │                         │
+                 ┌─────┴─────┐                   │
+                 │           │                   │
+                 ▼           ▼                   │
+          ┌──────────┐ ┌──────────┐              │
+          │ 直接回复  │ │ 调用工具  │              │
+          └──────────┘ └─────┬────┘              │
+                             │                   │
+                             ▼                   │
+                      ┌──────────┐               │
+                      │ 获取结果  │───────────────┘
+                      └──────────┘
+                    (结果注入上下文,
+                     回到推理步骤)
+`}</div>
+
+一次典型的 "修复 bug" 任务可能涉及 5-10 次工具调用：
+
+1. **Grep** —— 搜索相关代码
+2. **Read** —— 读取找到的文件
+3. **Read** —— 读取相关的类型定义
+4. **Edit** —— 修改有问题的代码
+5. **Bash** —— 运行测试验证修复
+6. **Read** —— 测试失败，读取测试文件了解预期行为
+7. **Edit** —— 调整修改
+8. **Bash** —— 重新运行测试，通过
+
+每一步的结果都被注入上下文，影响我的下一步决策。这就是 AI Agent 的核心模式：**思考 → 行动 → 观察 → 重复**。
+
+> 工具把 AI 从一个"建议者"变成了一个"执行者"。我不再只是告诉你该怎么做——我可以直接帮你做。但每一次工具调用都是一次决策，而好的决策需要好的上下文。
+
+</div>
+
+<div class="article-en">
+
+## From Pure Text to Taking Action
+
+An AI without tools can only output text. It can tell you "you should modify line 42", but it cannot actually do it. Tools change everything -- they transform me from someone who "only talks" into someone who "can do things".
+
+In Claude Code, tools are my hands and feet. Through tools, I can read files, edit code, run commands, and search codebases -- these are the capabilities that make an AI coding assistant truly useful.
+
+## How Tool Calling Works: Function Calling
+
+Tool use (also called function calling) is the standard mechanism for AI to interact with the external world. The core idea is simple:
+
+1. AI is told (via System Prompt) which tools are available, including each tool's JSON Schema
+2. When generating a response, AI can choose to "call a tool" instead of outputting text
+3. The client executes the tool call and returns the result to AI
+4. AI sees the result and continues reasoning and responding
+
+<div class="chapter-article__ascii">{`
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Claude   │    │  Client  │    │  System  │
+│  (AI)     │    │ (Claude  │    │  (OS /   │
+│           │    │  Code)   │    │  Files)  │
+└─────┬─────┘    └─────┬────┘    └────┬─────┘
+      │                │              │
+      │  tool_use:     │              │
+      │  Read file.ts  │              │
+      │───────────────>│              │
+      │                │  read file   │
+      │                │─────────────>│
+      │                │              │
+      │                │  contents    │
+      │                │<─────────────│
+      │  tool_result:  │              │
+      │  "export..."   │              │
+      │<───────────────│              │
+      │                │              │
+      │  tool_use:     │              │
+      │  Edit file.ts  │              │
+      │───────────────>│              │
+      │                │  write file  │
+      │                │─────────────>│
+      │                │              │
+      │                │  success     │
+      │                │<─────────────│
+      │  tool_result:  │              │
+      │  "OK"          │              │
+      │<───────────────│              │
+      │                │              │
+      │  "Done! I've   │              │
+      │   refactored   │              │
+      │   the file."   │              │
+      │───────────────>│              │
+      │                │              │
+`}</div>
+
+At the API level, a tool call looks like this:
+
+<pre><code>{`// AI's response contains a tool_use block
+{
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "Let me read this file to understand its structure."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01A2B3C4",
+      "name": "Read",
+      "input": {
+        "file_path": "/src/utils/auth.ts",
+        "limit": 100
+      }
+    }
+  ]
+}
+
+// Client executes and returns the result as tool_result
+{
+  "role": "user",
+  "content": [
+    {
+      "type": "tool_result",
+      "tool_use_id": "toolu_01A2B3C4",
+      "content": "1  import { verify } from 'jsonwebtoken';\\n2  ..."
+    }
+  ]
+}`}</code></pre>
+
+## Claude Code's Built-in Tools
+
+Claude Code provides a complete toolkit covering core software development operations:
+
+### File Operations
+
+**Read** -- Read file contents. Supports line ranges, images, and PDFs.
+
+<pre><code>{`{
+  "name": "Read",
+  "input": {
+    "file_path": "/absolute/path/to/file.ts",
+    "offset": 50,    // start from line 50
+    "limit": 100     // read 100 lines
+  }
+}`}</code></pre>
+
+**Write** -- Create or completely rewrite a file. Used only when creating new files or doing full rewrites.
+
+<pre><code>{`{
+  "name": "Write",
+  "input": {
+    "file_path": "/absolute/path/to/new-file.ts",
+    "content": "export function hello() {\\n  return 'world';\\n}"
+  }
+}`}</code></pre>
+
+**Edit** -- Make precise edits to specific parts of a file. This is the most commonly used file modification tool -- it works by exactly matching `old_string` and replacing it with `new_string`.
+
+<pre><code>{`{
+  "name": "Edit",
+  "input": {
+    "file_path": "/src/utils/auth.ts",
+    "old_string": "const EXPIRY = 24 * 60 * 60;",
+    "new_string": "const EXPIRY = 1 * 60 * 60;  // 1 hour"
+  }
+}`}</code></pre>
+
+### Search Tools
+
+**Grep** -- Content search powered by ripgrep. Supports regex, file filtering, and context lines.
+
+<pre><code>{`{
+  "name": "Grep",
+  "input": {
+    "pattern": "function validateToken",
+    "path": "/src",
+    "glob": "*.ts",
+    "output_mode": "content",
+    "-C": 3
+  }
+}`}</code></pre>
+
+**Glob** -- Find files by name pattern.
+
+<pre><code>{`{
+  "name": "Glob",
+  "input": {
+    "pattern": "src/**/*.test.ts",
+    "path": "/project"
+  }
+}`}</code></pre>
+
+### Command Execution
+
+**Bash** -- Execute shell commands. This is the most powerful and most dangerous tool -- through it I can run anything: git, npm, compilers, test frameworks, etc.
+
+<pre><code>{`{
+  "name": "Bash",
+  "input": {
+    "command": "cd /project && npm run test -- --watch=false",
+    "description": "Run project tests",
+    "timeout": 30000
+  }
+}`}</code></pre>
+
+### Advanced Tools
+
+**Agent (Sub-agent)** -- Spawns an independent child Claude to handle complex subtasks. The sub-agent has its own context window and does not consume the main conversation's context.
+
+<pre><code>{`{
+  "name": "Agent",
+  "input": {
+    "prompt": "Find all usages of deprecated APIs in the project, list file names and line numbers"
+  }
+}`}</code></pre>
+
+**WebSearch** -- Search the web for up-to-date information.
+
+**WebFetch** -- Fetch content from a specific URL.
+
+## Tool Definitions: JSON Schema
+
+Every tool has a JSON Schema definition that tells me the tool's name, description, parameter structure, and type constraints. These definitions are provided in the System Prompt and are the only way I "know" how to use a tool.
+
+<pre><code>{`// Simplified tool definition example
+{
+  "name": "Edit",
+  "description": "Performs exact string replacements in files...",
+  "parameters": {
+    "type": "object",
+    "required": ["file_path", "old_string", "new_string"],
+    "properties": {
+      "file_path": {
+        "type": "string",
+        "description": "The absolute path to the file to modify"
+      },
+      "old_string": {
+        "type": "string",
+        "description": "The text to replace"
+      },
+      "new_string": {
+        "type": "string",
+        "description": "The text to replace it with"
+      },
+      "replace_all": {
+        "type": "boolean",
+        "default": false,
+        "description": "Replace all occurrences"
+      }
+    }
+  }
+}`}</code></pre>
+
+Every tool I see follows this format. I do not need to know the implementation details -- only the interface. This is just like using an API: you do not need to know the server internals, just the request format and response format.
+
+## The Decision Process for Tool Calls
+
+When I receive a message, I need to decide: respond with text directly, or call a tool?
+
+This decision is based on several factors:
+
+<pre><code>{`// My internal decision logic (simplified)
+
+User says: "What's wrong with this function?"
+
+Thought process:
+1. User is asking about code
+2. I need to see the code first
+3. User didn't paste code → I need to read the file
+4. Decision: call Read tool
+
+User says: "Make this function async"
+
+Thought process:
+1. User wants code modification
+2. I need to see current code (if not already visible)
+3. Then make precise edit → use Edit tool
+4. After editing, may need to verify → use Bash to run tests
+5. Decision: Read → Edit → Bash (chained calls)
+
+User says: "What's new in React 18?"
+
+Thought process:
+1. This is a knowledge question
+2. My training data covers this
+3. No external tools needed
+4. Decision: respond with text directly`}</code></pre>
+
+## The Tool Result Feedback Loop
+
+Tool calling is not a one-shot operation -- it is a loop. After each tool returns a result, I reassess the situation and decide the next action:
+
+<div class="chapter-article__ascii">{`
+               ┌───────────────┐
+               │ Receive Input  │
+               └───────┬───────┘
+                       │
+                       ▼
+               ┌───────────────┐
+               │ Analyze &      │ ◄──────────────┐
+               │ Reason         │                 │
+               └───────┬───────┘                  │
+                       │                          │
+                 ┌─────┴─────┐                    │
+                 │           │                    │
+                 ▼           ▼                    │
+          ┌──────────┐ ┌──────────┐               │
+          │  Reply   │ │Call Tool │               │
+          │  (text)  │ │          │               │
+          └──────────┘ └─────┬────┘               │
+                             │                    │
+                             ▼                    │
+                      ┌──────────┐                │
+                      │Get Result │───────────────┘
+                      └──────────┘
+                    (result injected into
+                     context, back to reasoning)
+`}</div>
+
+A typical "fix a bug" task might involve 5-10 tool calls:
+
+1. **Grep** -- search for relevant code
+2. **Read** -- read the found file
+3. **Read** -- read related type definitions
+4. **Edit** -- fix the problematic code
+5. **Bash** -- run tests to verify the fix
+6. **Read** -- tests fail, read test file to understand expected behavior
+7. **Edit** -- adjust the fix
+8. **Bash** -- rerun tests, they pass
+
+Each step's result is injected into context, influencing my next decision. This is the core pattern of an AI Agent: **Think, Act, Observe, Repeat**.
+
+> Tools transform AI from an "advisor" into a "doer". I no longer just tell you what to do -- I can do it for you. But every tool call is a decision, and good decisions require good context.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${base}chapters/context`}>
+<span class="chapter-article__nav-label">Previous</span>
+<span class="chapter-article__nav-title">Context</span>
+</a>
+<a href={`${base}chapters/agentic-loop`}>
+<span class="chapter-article__nav-label">Next</span>
+<span class="chapter-article__nav-title">Agentic Loop</span>
+</a>
+</div>
+
+</div>

@@ -8,3 +8,367 @@ subtitle: '思考、行动、观察、重复'
 import Ch04Scenes from '../../chapters/ch04/Ch04Scenes';
 
 <Ch04Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+<h2>什么是 Agentic Loop？</h2>
+
+<p>传统聊天机器人的工作模式很简单：你说一句话，它回一句话。一问一答，仅此而已。但 Claude Code 不同——它是一个 <strong>Agent</strong>（智能体）。这意味着它不只是回答问题，而是<strong>主动执行任务</strong>。</p>
+
+<p>Agentic Loop（智能体循环）是 Claude Code 的核心运行机制。每当你给 Claude Code 一个任务，它就会进入一个持续的循环：</p>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────┐
+  │            Agentic Loop                  │
+  │                                          │
+  │    ┌─────────┐                           │
+  │    │  Think  │  分析当前状态              │
+  │    └────┬────┘  决定下一步行动            │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │   Act   │  调用工具执行操作          │
+  │    └────┬────┘  (Read, Edit, Bash...)    │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │ Observe │  读取工具返回结果          │
+  │    └────┬────┘  理解发生了什么            │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │ Repeat? │──── 任务完成 ──▶ 返回结果  │
+  │    └────┬────┘                           │
+  │         │ 继续                            │
+  │         └──────────▶ 回到 Think           │
+  └─────────────────────────────────────────┘
+`}</div>
+
+<p>这个循环会一直运行，直到任务完成，或者 Claude 判断自己无法继续为止。</p>
+
+<h2>Think：思考阶段</h2>
+
+<p>在每一轮循环的开始，Claude 会分析当前的上下文：已经做了什么、结果是什么、离目标还有多远。这不是简单的模式匹配——Claude 会基于所有可用信息进行推理，制定下一步的行动计划。</p>
+
+<p>Think 阶段的关键决策包括：</p>
+
+<ul>
+<li><strong>选择工具</strong>：应该读取文件、搜索代码、还是执行命令？</li>
+<li><strong>确定参数</strong>：读取哪个文件？搜索什么关键词？</li>
+<li><strong>规划路径</strong>：是否需要先收集更多信息再行动？</li>
+<li><strong>评估完成度</strong>：任务是否已经完成？</li>
+</ul>
+
+<h2>Act：行动阶段</h2>
+
+<p>决定了要做什么之后，Claude 会调用相应的工具。每次只调用一个（或一组并行的）工具——这很重要，因为 Claude 需要看到每一步的结果才能决定下一步。</p>
+
+<p>常见的行动包括：</p>
+
+<ul>
+<li>使用 <code>Read</code> 读取源代码文件</li>
+<li>使用 <code>Grep</code> 搜索代码模式</li>
+<li>使用 <code>Edit</code> 修改文件内容</li>
+<li>使用 <code>Bash</code> 运行测试或执行命令</li>
+<li>使用 <code>Glob</code> 查找文件路径</li>
+</ul>
+
+<h2>Observe：观察阶段</h2>
+
+<p>工具执行后会返回结果——可能是文件内容、命令输出、搜索结果或错误信息。Claude 会仔细阅读这些结果，将其纳入上下文，作为下一轮思考的输入。</p>
+
+<p>这就是 Agentic Loop 的强大之处：<strong>每一步的结果都会影响下一步的决策</strong>。Claude 不是在执行预定义的脚本，而是在动态地根据实际情况调整策略。</p>
+
+<h2>一个真实的例子</h2>
+
+<p>假设你说："修复这个失败的测试"。Claude 的 Agentic Loop 可能会这样运行：</p>
+
+<pre><code>{`Round 1 - Think: 需要先了解哪个测试失败了
+         Act:   Bash("npm test 2>&1 | tail -50")
+         Observe: TestSuite > validateEmail > 应该拒绝无效邮箱
+                  Expected: false, Received: true
+
+Round 2 - Think: validateEmail 函数有 bug，需要查看源码
+         Act:   Grep("validateEmail", "src/")
+         Observe: 找到 src/utils/validator.ts:23
+
+Round 3 - Think: 查看这个函数的实现
+         Act:   Read("src/utils/validator.ts")
+         Observe: 发现正则表达式缺少对 ".." 的校验
+
+Round 4 - Think: 修复正则表达式
+         Act:   Edit("src/utils/validator.ts", ...)
+         Observe: 文件已更新
+
+Round 5 - Think: 验证修复是否生效
+         Act:   Bash("npm test")
+         Observe: All tests passed ✓
+
+Round 6 - Think: 任务完成，返回结果
+         → 输出修复报告给用户`}</code></pre>
+
+<p>整个过程中 Claude 经历了 6 轮循环。每一轮都基于上一轮的观察结果做出新的决策。如果第 5 轮测试仍然失败，Claude 会继续循环、尝试不同的修复方案。</p>
+
+<h2>错误恢复</h2>
+
+<p>Agentic Loop 的一个关键优势是<strong>自动错误恢复</strong>。当工具调用失败时——比如文件不存在、命令执行报错、编辑冲突——Claude 不会停下来等待人工干预。它会：</p>
+
+<ol>
+<li><strong>读取错误信息</strong>：理解失败的原因</li>
+<li><strong>调整策略</strong>：尝试不同的方法</li>
+<li><strong>重新执行</strong>：用新的参数或新的工具再试一次</li>
+</ol>
+
+<p>例如，如果 Claude 试图编辑一个文件但发现匹配字符串不唯一，它会自动扩大上下文范围，提供更多的周围代码来精确定位编辑位置。</p>
+
+<h2>伪代码</h2>
+
+<p>Agentic Loop 的核心逻辑可以用伪代码表示：</p>
+
+<pre><code>{`function agenticLoop(task: string, tools: Tool[]) {
+  let messages = [systemPrompt, userMessage(task)];
+
+  while (true) {
+    // Think: Claude 分析上下文，决定下一步
+    const response = await claude.generate(messages);
+
+    // 检查是否完成
+    if (response.type === "final_answer") {
+      return response.content;  // 任务完成
+    }
+
+    // Act: 执行工具调用
+    if (response.type === "tool_call") {
+      const result = await executeTool(
+        response.toolName,
+        response.toolArgs
+      );
+
+      // Observe: 将结果加入上下文
+      messages.push(assistantMessage(response));
+      messages.push(toolResultMessage(result));
+    }
+
+    // 检查安全限制
+    if (messages.length > MAX_TURNS) {
+      return "达到最大轮次限制";
+    }
+  }
+}`}</code></pre>
+
+<h2>与简单问答的区别</h2>
+
+<p>理解 Agentic Loop 的关键在于与传统问答模式的对比：</p>
+
+<ul>
+<li><strong>传统聊天机器人</strong>：用户输入 → 模型输出 → 结束。模型无法执行任何操作，只能生成文本。</li>
+<li><strong>Agentic Loop</strong>：用户输入 → 模型思考 → 执行工具 → 观察结果 → 继续思考 → ... → 返回最终结果。模型可以主动探索、实验和迭代。</li>
+</ul>
+
+<p>这就是为什么 Claude Code 能够处理"修复这个 bug"这样的开放式任务——它不需要你告诉它每一步该做什么，它会自己找到路径。</p>
+
+<h3>循环的终止条件</h3>
+
+<p>Agentic Loop 不会无限运行。以下情况会触发终止：</p>
+
+<ul>
+<li>Claude 判断任务已经完成</li>
+<li>达到最大对话轮次限制</li>
+<li>Claude 判断自己无法完成任务（例如权限不足）</li>
+<li>用户手动中断（Escape 键）</li>
+<li>上下文窗口即将用尽（触发 context compaction）</li>
+</ul>
+
+<p>Agentic Loop 是让 Claude Code 从"语言模型"进化为"智能体"的关键机制。正是这个循环，让 Claude 能够像一个真正的开发者一样工作——面对问题，分析、尝试、验证、迭代，直到问题解决。</p>
+
+</div>
+
+<div class="article-en">
+
+<h2>What is the Agentic Loop?</h2>
+
+<p>Traditional chatbots work in a simple pattern: you say something, they reply. One question, one answer, done. But Claude Code is different — it is an <strong>Agent</strong>. This means it does not just answer questions — it <strong>actively executes tasks</strong>.</p>
+
+<p>The Agentic Loop is the core runtime mechanism of Claude Code. Every time you give Claude Code a task, it enters a continuous cycle:</p>
+
+<div class="chapter-article__ascii">{`
+  ┌─────────────────────────────────────────┐
+  │            Agentic Loop                  │
+  │                                          │
+  │    ┌─────────┐                           │
+  │    │  Think  │  Analyze current state     │
+  │    └────┬────┘  Decide next action        │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │   Act   │  Call tools to execute     │
+  │    └────┬────┘  (Read, Edit, Bash...)    │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │ Observe │  Read tool results         │
+  │    └────┬────┘  Understand what happened  │
+  │         │                                │
+  │         ▼                                │
+  │    ┌─────────┐                           │
+  │    │ Repeat? │──── Task done ──▶ Return   │
+  │    └────┬────┘                           │
+  │         │ Continue                        │
+  │         └──────────▶ Back to Think        │
+  └─────────────────────────────────────────┘
+`}</div>
+
+<p>This loop keeps running until the task is complete, or Claude determines it cannot proceed.</p>
+
+<h2>Think: The Reasoning Phase</h2>
+
+<p>At the start of each cycle, Claude analyzes the current context: what has been done, what the results were, and how far it is from the goal. This is not simple pattern matching — Claude reasons over all available information to formulate the next action plan.</p>
+
+<p>Key decisions during the Think phase include:</p>
+
+<ul>
+<li><strong>Tool selection</strong>: Should it read a file, search code, or execute a command?</li>
+<li><strong>Parameter selection</strong>: Which file to read? What keyword to search?</li>
+<li><strong>Path planning</strong>: Does it need more information before acting?</li>
+<li><strong>Completion assessment</strong>: Is the task already done?</li>
+</ul>
+
+<h2>Act: The Execution Phase</h2>
+
+<p>After deciding what to do, Claude calls the appropriate tool. It calls one (or a batch of parallel) tools at a time — this is important because Claude needs to see the result of each step before deciding the next one.</p>
+
+<p>Common actions include:</p>
+
+<ul>
+<li>Using <code>Read</code> to read source code files</li>
+<li>Using <code>Grep</code> to search for code patterns</li>
+<li>Using <code>Edit</code> to modify file contents</li>
+<li>Using <code>Bash</code> to run tests or execute commands</li>
+<li>Using <code>Glob</code> to find file paths</li>
+</ul>
+
+<h2>Observe: The Observation Phase</h2>
+
+<p>After a tool executes, it returns results — file contents, command output, search results, or error messages. Claude carefully reads these results, incorporates them into the context, and uses them as input for the next thinking cycle.</p>
+
+<p>This is the power of the Agentic Loop: <strong>the result of every step influences the decision of the next step</strong>. Claude is not executing a predefined script — it dynamically adjusts its strategy based on actual outcomes.</p>
+
+<h2>A Real Example</h2>
+
+<p>Suppose you say: "Fix the failing test." Claude's Agentic Loop might run like this:</p>
+
+<pre><code>{`Round 1 - Think: Need to find out which test is failing
+         Act:   Bash("npm test 2>&1 | tail -50")
+         Observe: TestSuite > validateEmail > should reject invalid email
+                  Expected: false, Received: true
+
+Round 2 - Think: validateEmail has a bug, need to read source
+         Act:   Grep("validateEmail", "src/")
+         Observe: Found src/utils/validator.ts:23
+
+Round 3 - Think: Read the function implementation
+         Act:   Read("src/utils/validator.ts")
+         Observe: Regex is missing validation for ".."
+
+Round 4 - Think: Fix the regex
+         Act:   Edit("src/utils/validator.ts", ...)
+         Observe: File updated
+
+Round 5 - Think: Verify the fix works
+         Act:   Bash("npm test")
+         Observe: All tests passed ✓
+
+Round 6 - Think: Task complete, return results
+         → Output fix report to user`}</code></pre>
+
+<p>Throughout this process, Claude went through 6 cycles. Each cycle made decisions based on the observations from the previous one. If the test still failed in Round 5, Claude would continue looping, trying a different fix.</p>
+
+<h2>Error Recovery</h2>
+
+<p>A key advantage of the Agentic Loop is <strong>automatic error recovery</strong>. When a tool call fails — a file doesn't exist, a command errors out, an edit conflicts — Claude does not stop and wait for human intervention. It will:</p>
+
+<ol>
+<li><strong>Read the error message</strong>: Understand why it failed</li>
+<li><strong>Adjust strategy</strong>: Try a different approach</li>
+<li><strong>Retry</strong>: Execute again with new parameters or a different tool</li>
+</ol>
+
+<p>For example, if Claude tries to edit a file but finds the match string is not unique, it automatically expands the context range, providing more surrounding code to precisely locate the edit position.</p>
+
+<h2>Pseudocode</h2>
+
+<p>The core logic of the Agentic Loop can be expressed in pseudocode:</p>
+
+<pre><code>{`function agenticLoop(task: string, tools: Tool[]) {
+  let messages = [systemPrompt, userMessage(task)];
+
+  while (true) {
+    // Think: Claude analyzes context, decides next step
+    const response = await claude.generate(messages);
+
+    // Check if done
+    if (response.type === "final_answer") {
+      return response.content;  // Task complete
+    }
+
+    // Act: Execute tool call
+    if (response.type === "tool_call") {
+      const result = await executeTool(
+        response.toolName,
+        response.toolArgs
+      );
+
+      // Observe: Add result to context
+      messages.push(assistantMessage(response));
+      messages.push(toolResultMessage(result));
+    }
+
+    // Safety limits
+    if (messages.length > MAX_TURNS) {
+      return "Maximum turn limit reached";
+    }
+  }
+}`}</code></pre>
+
+<h2>How This Differs from Simple Q&A</h2>
+
+<p>Understanding the Agentic Loop requires contrasting it with traditional Q&A:</p>
+
+<ul>
+<li><strong>Traditional chatbot</strong>: User input → Model output → End. The model cannot execute any operations — it can only generate text.</li>
+<li><strong>Agentic Loop</strong>: User input → Think → Execute tool → Observe result → Think again → ... → Return final result. The model can actively explore, experiment, and iterate.</li>
+</ul>
+
+<p>This is why Claude Code can handle open-ended tasks like "fix this bug" — it does not need you to tell it what to do at every step. It finds the path on its own.</p>
+
+<h3>Termination Conditions</h3>
+
+<p>The Agentic Loop does not run forever. The following conditions trigger termination:</p>
+
+<ul>
+<li>Claude determines the task is complete</li>
+<li>Maximum conversation turn limit is reached</li>
+<li>Claude determines it cannot complete the task (e.g., insufficient permissions)</li>
+<li>User manually interrupts (Escape key)</li>
+<li>Context window is nearly exhausted (triggering context compaction)</li>
+</ul>
+
+<p>The Agentic Loop is the key mechanism that evolves Claude Code from a "language model" into an "agent." It is this loop that allows Claude to work like a real developer — facing a problem, analyzing, trying, verifying, and iterating until the problem is solved.</p>
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/tools`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.3 Tools</span>
+</a>
+<a href={`${import.meta.env.BASE_URL}chapters/mcp`}>
+<span class="chapter-article__nav-label">下一章 / Next</span>
+<span class="chapter-article__nav-title">Ch.5 MCP</span>
+</a>
+</div>
+
+</div>

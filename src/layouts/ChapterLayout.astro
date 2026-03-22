@@ -23,7 +23,7 @@ const categories = getChaptersByCategory();
 const base = import.meta.env.BASE_URL;
 ---
 
-<Layout title={pageTitle}>
+<Layout title={pageTitle} bodyClass="chapter-page">
   <!-- Language Toggle -->
   <div class="lang-toggle-wrapper">
     <button class="lang-toggle" id="lang-toggle" aria-label="Switch language">
@@ -89,8 +89,10 @@ const base = import.meta.env.BASE_URL;
   <!-- Mobile Overlay -->
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-  <!-- Scene Content -->
-  <slot />
+  <!-- Chapter Content -->
+  <div class="chapter-main">
+    <slot />
+  </div>
 </Layout>
 
 <script>
@@ -157,5 +159,10 @@ const base = import.meta.env.BASE_URL;
   // Listen for changes from React islands
   window.addEventListener('claude101-lang-change', (e: Event) => {
     applyLang((e as CustomEvent).detail);
+  });
+
+  // Unlock scroll when scenes complete (event from SceneEngine)
+  window.addEventListener('claude101-scenes-complete', () => {
+    document.body.classList.add('scroll-unlocked');
   });
 </script>

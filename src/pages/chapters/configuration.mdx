@@ -1,10 +1,631 @@
 ---
 layout: '../../layouts/ChapterLayout.astro'
-chapter: 12
+chapter: 13
 title: 'Configuration'
 subtitle: '定制你的 Claude Code'
 ---
 
-import Ch12Scenes from '../../chapters/ch12/Ch12Scenes';
+import Ch13Scenes from '../../chapters/ch13/Ch13Scenes';
 
-<Ch12Scenes client:only="react" />
+<Ch13Scenes client:only="react" />
+
+<div class="chapter-article">
+
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 定制你的 Claude Code：配置系统全解
+
+我们已经走过了很长的旅程——从第一条 Prompt 开始，经历了上下文窗口、工具调用、Agentic Loop、MCP、记忆系统、Hooks、Skills、Plugins、子智能体、权限安全。现在，是时候把所有这些拼图拼在一起了。
+
+配置系统是让 Claude Code 从「通用 AI 助手」变成「你的专属开发伙伴」的关键。它定义了我的行为、能力边界、自动化流程，以及如何与你的团队协作。
+
+### 配置文件全景
+
+Claude Code 的配置由多个文件共同组成，每个文件负责不同的职责：
+
+<pre><code>{`项目根目录/
+├── .claude/
+│   ├── settings.json          # 项目级设置（提交到仓库）
+│   ├── settings.local.json    # 本地个人设置（不提交）
+│   └── commands/              # 自定义斜杠命令（Skills）
+│       ├── review.md
+│       └── deploy.md
+├── CLAUDE.md                  # 项目指令（每次对话都加载）
+├── src/
+│   └── CLAUDE.md              # 目录级指令（进入该目录时加载）
+└── ~/ (用户主目录)
+    └── .claude/
+        ├── settings.json      # 用户全局设置
+        └── CLAUDE.md          # 用户全局指令`}</code></pre>
+
+### 设置层级：洋葱模型
+
+配置不是一层，而是五层，像洋葱一样由内到外层层包裹：
+
+<div class="chapter-article__ascii">
+<pre>{`
+  优先级从高到低：
+
+  ┌─────────────────────────────────────────┐
+  │  5. Organization（组织级）               │
+  │     由管理员通过 API 设置                │
+  │     强制策略，不可被覆盖                  │
+  │  ┌───────────────────────────────────┐  │
+  │  │  4. CLI Arguments（命令行参数）    │  │
+  │  │     claude --permission-mode plan  │  │
+  │  │     仅影响本次会话                  │  │
+  │  │  ┌─────────────────────────────┐  │  │
+  │  │  │  3. Local（本地级）          │  │  │
+  │  │  │     .claude/settings.local   │  │  │
+  │  │  │     个人偏好，不提交到仓库     │  │  │
+  │  │  │  ┌───────────────────────┐  │  │  │
+  │  │  │  │  2. Project（项目级）  │  │  │  │
+  │  │  │  │     .claude/settings   │  │  │  │
+  │  │  │  │     团队共享配置        │  │  │  │
+  │  │  │  │  ┌─────────────────┐  │  │  │  │
+  │  │  │  │  │  1. User（用户） │  │  │  │  │
+  │  │  │  │  │  ~/.claude/     │  │  │  │  │
+  │  │  │  │  │  全局默认        │  │  │  │  │
+  │  │  │  │  └─────────────────┘  │  │  │  │
+  │  │  │  └───────────────────────┘  │  │  │
+  │  │  └─────────────────────────────┘  │  │
+  │  └───────────────────────────────────┘  │
+  └─────────────────────────────────────────┘
+`}</pre>
+</div>
+
+**每一层控制什么：**
+
+**User（用户级）** —— `~/.claude/settings.json`。你的全局默认配置。所有项目都会继承这些设置。适合放置你个人的通用偏好，比如默认的权限模式、常用的 MCP 服务器。
+
+**Project（项目级）** —— `.claude/settings.json`。提交到版本控制，团队所有成员共享。定义项目特定的规则，比如代码风格约定、允许的命令、项目专用的 MCP 服务器。
+
+**Local（本地级）** —— `.claude/settings.local.json`。不提交到仓库（加入 .gitignore）。用于个人覆盖项目设置，比如你个人需要额外的调试工具权限。
+
+**CLI Arguments（命令行参数）** —— 仅在当前会话生效。比如 `claude --permission-mode plan` 可以临时进入只读模式。
+
+**Organization（组织级）** —— 由组织管理员通过 API 设置。强制执行安全策略，**不可被**下层覆盖。比如禁止 force push、禁止访问某些目录。
+
+### settings.json 结构
+
+一个完整的 settings.json 可能包含以下内容：
+
+<pre><code>{`{
+  // 模型配置
+  "model": "claude-sonnet-4-20250514",
+  "smallFastModel": "claude-haiku-4-20250514",
+
+  // 权限配置
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read", "Grep", "Glob",
+      "Bash(npm run *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Write(.env*)"
+    ]
+  },
+
+  // Hooks 配置
+  "hooks": {
+    "afterWrite": [
+      {
+        "command": "npx prettier --write $FILE",
+        "description": "Auto-format on save"
+      }
+    ],
+    "preCommit": [
+      {
+        "command": "npm run lint",
+        "description": "Lint before commit"
+      }
+    ]
+  },
+
+  // MCP 服务器
+  "mcpServers": {
+    "database": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "env:GITHUB_TOKEN"
+      }
+    }
+  }
+}`}</code></pre>
+
+### CLAUDE.md：项目指令
+
+CLAUDE.md 是一个特殊的文件。它不是配置文件——它是**指令文件**。每次对话开始时，Claude Code 会自动加载它，就像给我一份「项目手册」。
+
+<pre><code>{`# CLAUDE.md 示例
+
+## 项目概述
+这是一个 React + TypeScript 项目，使用 Vite 构建。
+
+## 代码规范
+- 使用函数组件和 Hooks，不要使用 class 组件
+- 样式使用 Tailwind CSS，不要写内联样式
+- 所有公共函数必须有 JSDoc 注释
+- 测试文件放在 __tests__ 目录中
+
+## 开发命令
+- npm run dev     # 启动开发服务器
+- npm run build   # 构建生产版本
+- npm run test    # 运行测试
+- npm run lint    # 代码检查
+
+## 架构决策
+- 状态管理使用 Zustand，不要使用 Redux
+- API 请求使用 React Query
+- 路由使用 React Router v6
+
+## 注意事项
+- 不要修改 src/legacy/ 目录下的文件
+- 数据库迁移必须是可逆的
+- 所有 API 端点必须有速率限制`}</code></pre>
+
+CLAUDE.md 支持目录级加载。项目根目录的 CLAUDE.md 始终生效，而 `src/components/CLAUDE.md` 只在我访问该目录下的文件时才会被加载。这让你可以为不同模块提供不同的指令。
+
+### 所有拼图如何组合在一起
+
+让我们回顾一下所有配置机制如何协同工作：
+
+<div class="chapter-article__ascii">
+<pre>{`
+  CLAUDE.md ──→ 定义行为     "使用 TypeScript strict mode"
+      │                      "遵循 REST API 命名规范"
+      │
+  Hooks ─────→ 自动化触发    "保存后自动格式化"
+      │                      "提交前自动 lint"
+      │
+  Skills ────→ 可复用流程    "/review → 执行代码审查流程"
+      │                      "/deploy → 执行部署流程"
+      │
+  Plugins ───→ 打包分发      "npm install 安装团队工具包"
+      │
+  MCP ───────→ 外部连接      "连接数据库、GitHub、Slack"
+      │
+  Permissions → 安全边界     "允许 npm 脚本，禁止 rm -rf"
+      │
+  Agents ────→ 并行执行      "派出子智能体搜索和分析"
+      │
+  ┌────────────────────────────────────────┐
+  │         一个完整的 AI 开发环境          │
+  └────────────────────────────────────────┘
+`}</pre>
+</div>
+
+**CLAUDE.md** 定义我的行为——我应该遵循什么规范、注意什么约束。
+**Hooks** 自动化触发——在特定时机自动执行脚本。
+**Skills** 封装可复用流程——把复杂的多步操作变成简单的斜杠命令。
+**Plugins** 打包和分发——让配置和工具可以跨项目共享。
+**MCP** 连接外部世界——让我能够访问数据库、API、第三方服务。
+**Permissions** 划定安全边界——确保我不会做出危险的操作。
+**Agents** 实现并行执行——让多个智能体同时工作。
+
+### 实战：为新项目配置 Claude Code
+
+假设你加入了一个新的 Node.js 项目，以下是推荐的配置流程：
+
+**第一步：创建 CLAUDE.md**
+
+<pre><code>{`# CLAUDE.md
+这是一个 Express.js REST API 项目。
+
+## 技术栈
+Node.js 20, Express 5, TypeScript, Prisma ORM, PostgreSQL
+
+## 命令
+- npm run dev: 启动开发服务器 (nodemon)
+- npm run build: TypeScript 编译
+- npm run test: Jest 测试
+- npm run db:migrate: 数据库迁移
+
+## 规范
+- 所有路由处理函数放在 src/routes/ 目录
+- 业务逻辑放在 src/services/ 目录
+- 数据库操作通过 Prisma client，不要写原生 SQL
+- 错误处理使用自定义 AppError 类
+- 响应格式统一使用 { success, data, error }`}</code></pre>
+
+**第二步：配置 settings.json**
+
+<pre><code>{`// .claude/settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx prisma *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Edit",
+      "Write(src/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Write(.env*)",
+      "Write(prisma/migrations/*)",
+      "Bash(git push --force*)"
+    ]
+  },
+  "hooks": {
+    "afterWrite": [
+      { "command": "npx prettier --write $FILE" }
+    ]
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-postgres", "env:DATABASE_URL"]
+    }
+  }
+}`}</code></pre>
+
+**第三步：添加常用 Skills**
+
+<pre><code>{`// .claude/commands/review.md
+请对最近的 git diff 进行代码审查。重点关注：
+1. 类型安全性
+2. 错误处理是否完整
+3. 是否有潜在的性能问题
+4. API 响应格式是否符合规范`}</code></pre>
+
+**第四步：提交团队配置**
+
+<pre><code>{`git add CLAUDE.md .claude/settings.json .claude/commands/
+git commit -m "Add Claude Code configuration for team"
+
+# 个人本地配置不提交
+echo ".claude/settings.local.json" >> .gitignore`}</code></pre>
+
+### 团队配置的最佳实践
+
+1. **CLAUDE.md 要具体**。不要只写「遵循最佳实践」——写清楚哪些最佳实践、什么命名规范、什么架构模式
+2. **settings.json 要共享**。把项目级 settings.json 提交到仓库，确保团队成员使用一致的配置
+3. **本地覆盖用 local**。个人的调试偏好、额外的 MCP 服务器放在 settings.local.json
+4. **Deny 规则要团队统一**。禁止的危险操作应该在项目级定义，不要让个人配置绕过
+5. **Skills 要文档化**。每个自定义 Skill 都应该有清晰的描述，让新成员能快速上手
+6. **Hooks 要轻量**。afterWrite 的 Hook 会在每次写入后执行，确保它足够快
+7. **定期更新 CLAUDE.md**。随着项目演进，保持指令文件的时效性
+
+### 终章：你的 AI 开发伙伴
+
+恭喜你走到了这里。
+
+回想一下我们的旅程：从一条简单的 Prompt 开始，你了解了我如何接收指令、理解上下文、使用工具、在循环中思考和行动。你看到了我如何通过 MCP 连接外部世界，如何用 RAG 跨越记忆的鸿沟，如何通过 Hooks 和 Skills 实现自动化，如何召唤子智能体并行工作，如何在权限系统的保护下安全运行。
+
+现在你知道了配置系统如何把这一切组合在一起。
+
+Claude Code 不只是一个工具——它是一个**可编程的 AI 开发环境**。通过配置，你定义了这个环境的每一个方面：我的行为、能力、边界、自动化流程。每个项目、每个团队都可以拥有自己独特的 Claude Code 配置，就像每个开发者都有自己独特的 IDE 配置一样。
+
+但最重要的是，请记住：配置的终极目标不是控制 AI，而是**释放 AI 的潜力**。好的配置让我更了解你的项目，更高效地工作，更安全地执行操作。它把我从一个通用的语言模型，变成了你团队中一个真正有用的成员。
+
+这就是 Claude Code 的工作原理。从 Prompt 到 Configuration，从第一条指令到最终的系统架构——现在，一切都掌握在你手中了。
+
+</div>
+
+<div class="article-en">
+
+## Customize Your Claude Code: The Complete Configuration System
+
+We have come a long way -- from the first Prompt, through context windows, tool calls, the agentic loop, MCP, memory systems, Hooks, Skills, Plugins, subagents, and permissions. Now it is time to put all the puzzle pieces together.
+
+The configuration system is what transforms Claude Code from a "generic AI assistant" into "your dedicated development partner." It defines my behavior, capability boundaries, automation workflows, and how I collaborate with your team.
+
+### Configuration Files Overview
+
+Claude Code's configuration is composed of multiple files, each responsible for different concerns:
+
+<pre><code>{`project-root/
+├── .claude/
+│   ├── settings.json          # Project settings (committed to repo)
+│   ├── settings.local.json    # Personal local settings (not committed)
+│   └── commands/              # Custom slash commands (Skills)
+│       ├── review.md
+│       └── deploy.md
+├── CLAUDE.md                  # Project instructions (loaded every conversation)
+├── src/
+│   └── CLAUDE.md              # Directory-level instructions (loaded when entering dir)
+└── ~/ (home directory)
+    └── .claude/
+        ├── settings.json      # User global settings
+        └── CLAUDE.md          # User global instructions`}</code></pre>
+
+### Settings Hierarchy: The Onion Model
+
+Configuration is not one layer but five, stacking from inside out like an onion:
+
+<div class="chapter-article__ascii">
+<pre>{`
+  Priority from highest to lowest:
+
+  ┌─────────────────────────────────────────┐
+  │  5. Organization                        │
+  │     Set by admins via API               │
+  │     Enforced policies, cannot override  │
+  │  ┌───────────────────────────────────┐  │
+  │  │  4. CLI Arguments                 │  │
+  │  │     claude --permission-mode plan  │  │
+  │  │     Affects current session only   │  │
+  │  │  ┌─────────────────────────────┐  │  │
+  │  │  │  3. Local                    │  │  │
+  │  │  │     .claude/settings.local   │  │  │
+  │  │  │     Personal, not committed  │  │  │
+  │  │  │  ┌───────────────────────┐  │  │  │
+  │  │  │  │  2. Project           │  │  │  │
+  │  │  │  │     .claude/settings  │  │  │  │
+  │  │  │  │     Team-shared       │  │  │  │
+  │  │  │  │  ┌─────────────────┐  │  │  │  │
+  │  │  │  │  │  1. User        │  │  │  │  │
+  │  │  │  │  │  ~/.claude/     │  │  │  │  │
+  │  │  │  │  │  Global default │  │  │  │  │
+  │  │  │  │  └─────────────────┘  │  │  │  │
+  │  │  │  └───────────────────────┘  │  │  │
+  │  │  └─────────────────────────────┘  │  │
+  │  └───────────────────────────────────┘  │
+  └─────────────────────────────────────────┘
+`}</pre>
+</div>
+
+**What each layer controls:**
+
+**User** -- `~/.claude/settings.json`. Your global defaults. All projects inherit these settings. Suitable for universal personal preferences like default permission mode and commonly used MCP servers.
+
+**Project** -- `.claude/settings.json`. Committed to version control, shared by all team members. Defines project-specific rules like code style conventions, allowed commands, and project-specific MCP servers.
+
+**Local** -- `.claude/settings.local.json`. Not committed to the repository (added to .gitignore). Used for personal overrides of project settings, such as additional debugging tool permissions.
+
+**CLI Arguments** -- Effective only for the current session. For example, `claude --permission-mode plan` temporarily enters read-only mode.
+
+**Organization** -- Set by organization admins via API. Enforces security policies that **cannot be** overridden by lower layers. For example, forbidding force push or access to certain directories.
+
+### settings.json Structure
+
+A complete settings.json might contain the following:
+
+<pre><code>{`{
+  // Model configuration
+  "model": "claude-sonnet-4-20250514",
+  "smallFastModel": "claude-haiku-4-20250514",
+
+  // Permission configuration
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read", "Grep", "Glob",
+      "Bash(npm run *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Write(.env*)"
+    ]
+  },
+
+  // Hooks configuration
+  "hooks": {
+    "afterWrite": [
+      {
+        "command": "npx prettier --write $FILE",
+        "description": "Auto-format on save"
+      }
+    ],
+    "preCommit": [
+      {
+        "command": "npm run lint",
+        "description": "Lint before commit"
+      }
+    ]
+  },
+
+  // MCP servers
+  "mcpServers": {
+    "database": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "env:GITHUB_TOKEN"
+      }
+    }
+  }
+}`}</code></pre>
+
+### CLAUDE.md: Project Instructions
+
+CLAUDE.md is a special file. It is not a configuration file -- it is an **instruction file**. At the start of every conversation, Claude Code automatically loads it, like handing me a "project handbook."
+
+<pre><code>{`# CLAUDE.md Example
+
+## Project Overview
+This is a React + TypeScript project built with Vite.
+
+## Code Standards
+- Use function components and Hooks, no class components
+- Styles use Tailwind CSS, no inline styles
+- All public functions must have JSDoc comments
+- Test files go in __tests__ directories
+
+## Development Commands
+- npm run dev     # Start dev server
+- npm run build   # Build for production
+- npm run test    # Run tests
+- npm run lint    # Code linting
+
+## Architecture Decisions
+- State management uses Zustand, not Redux
+- API requests use React Query
+- Routing uses React Router v6
+
+## Important Notes
+- Do not modify files under src/legacy/
+- Database migrations must be reversible
+- All API endpoints must have rate limiting`}</code></pre>
+
+CLAUDE.md supports directory-level loading. The root CLAUDE.md is always active, while `src/components/CLAUDE.md` is loaded only when I access files in that directory. This lets you provide different instructions for different modules.
+
+### How All the Pieces Fit Together
+
+Let us review how all configuration mechanisms work in concert:
+
+<div class="chapter-article__ascii">
+<pre>{`
+  CLAUDE.md ──→ Define behavior    "Use TypeScript strict mode"
+      │                            "Follow REST API naming"
+      │
+  Hooks ─────→ Automate triggers   "Auto-format on save"
+      │                            "Auto-lint before commit"
+      │
+  Skills ────→ Reusable workflows  "/review → run code review"
+      │                            "/deploy → run deploy flow"
+      │
+  Plugins ───→ Package & share     "npm install team toolkit"
+      │
+  MCP ───────→ External access     "Connect DB, GitHub, Slack"
+      │
+  Permissions → Safety boundaries  "Allow npm, deny rm -rf"
+      │
+  Agents ────→ Parallel execution  "Dispatch subagents to search"
+      │
+  ┌────────────────────────────────────────┐
+  │      A Complete AI Dev Environment     │
+  └────────────────────────────────────────┘
+`}</pre>
+</div>
+
+**CLAUDE.md** defines my behavior -- what standards to follow, what constraints to respect.
+**Hooks** automate triggers -- execute scripts at specific moments.
+**Skills** encapsulate reusable workflows -- turn complex multi-step operations into simple slash commands.
+**Plugins** package and distribute -- make configurations and tools shareable across projects.
+**MCP** connects to the outside world -- gives me access to databases, APIs, and third-party services.
+**Permissions** draw safety boundaries -- ensure I never perform dangerous operations.
+**Agents** enable parallel execution -- let multiple agents work simultaneously.
+
+### Practical Example: Configuring Claude Code for a New Project
+
+Suppose you join a new Node.js project. Here is the recommended setup process:
+
+**Step 1: Create CLAUDE.md**
+
+<pre><code>{`# CLAUDE.md
+This is an Express.js REST API project.
+
+## Tech Stack
+Node.js 20, Express 5, TypeScript, Prisma ORM, PostgreSQL
+
+## Commands
+- npm run dev: Start dev server (nodemon)
+- npm run build: TypeScript compilation
+- npm run test: Jest tests
+- npm run db:migrate: Database migrations
+
+## Standards
+- All route handlers go in src/routes/
+- Business logic goes in src/services/
+- Database operations via Prisma client, no raw SQL
+- Error handling uses custom AppError class
+- Response format: { success, data, error }`}</code></pre>
+
+**Step 2: Configure settings.json**
+
+<pre><code>{`// .claude/settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx prisma *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Edit",
+      "Write(src/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Write(.env*)",
+      "Write(prisma/migrations/*)",
+      "Bash(git push --force*)"
+    ]
+  },
+  "hooks": {
+    "afterWrite": [
+      { "command": "npx prettier --write $FILE" }
+    ]
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-postgres", "env:DATABASE_URL"]
+    }
+  }
+}`}</code></pre>
+
+**Step 3: Add Common Skills**
+
+<pre><code>{`// .claude/commands/review.md
+Review the latest git diff. Focus on:
+1. Type safety
+2. Complete error handling
+3. Potential performance issues
+4. API response format compliance`}</code></pre>
+
+**Step 4: Commit Team Configuration**
+
+<pre><code>{`git add CLAUDE.md .claude/settings.json .claude/commands/
+git commit -m "Add Claude Code configuration for team"
+
+# Personal local config not committed
+echo ".claude/settings.local.json" >> .gitignore`}</code></pre>
+
+### Best Practices for Team Configuration
+
+1. **Make CLAUDE.md specific.** Do not just write "follow best practices" -- spell out which best practices, what naming conventions, what architecture patterns
+2. **Share settings.json.** Commit the project-level settings.json to the repository so team members use consistent configuration
+3. **Use local for personal overrides.** Personal debug preferences and extra MCP servers go in settings.local.json
+4. **Unify deny rules at team level.** Dangerous operation bans should be defined at project level, not bypassed by individual configs
+5. **Document your Skills.** Every custom Skill should have a clear description so new members can get up to speed quickly
+6. **Keep Hooks lightweight.** afterWrite Hooks run on every write -- make sure they are fast enough
+7. **Update CLAUDE.md regularly.** As the project evolves, keep instruction files current
+
+### Final Chapter: Your AI Development Partner
+
+Congratulations on making it here.
+
+Think back on our journey: starting from a simple Prompt, you learned how I receive instructions, understand context, use tools, and think and act in loops. You saw how I connect to the outside world through MCP, bridge the gap of forgetting with RAG, automate with Hooks and Skills, dispatch subagents for parallel work, and operate safely under the permission system.
+
+Now you understand how the configuration system brings it all together.
+
+Claude Code is not just a tool -- it is a **programmable AI development environment**. Through configuration, you define every aspect of this environment: my behavior, capabilities, boundaries, and automation workflows. Every project and every team can have their own unique Claude Code configuration, just as every developer has their own unique IDE setup.
+
+But most importantly, remember this: the ultimate goal of configuration is not to control AI, but to **unleash AI's potential**. Good configuration helps me understand your project better, work more efficiently, and execute more safely. It transforms me from a generic language model into a genuinely useful member of your team.
+
+This is how Claude Code works. From Prompt to Configuration, from the first instruction to the final system architecture -- now, everything is in your hands.
+
+</div>
+
+<div class="chapter-article__nav">
+<a href={`${import.meta.env.BASE_URL}chapters/permissions`}>
+<span class="chapter-article__nav-label">上一章 / Previous</span>
+<span class="chapter-article__nav-title">Ch.12 Permissions & Safety</span>
+</a>
+</div>
+
+</div>

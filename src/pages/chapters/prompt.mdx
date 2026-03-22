@@ -5,6 +5,372 @@ title: 'Prompt'
 subtitle: '你收到了第一条指令'
 ---
 
+export const base = import.meta.env.BASE_URL;
+
 import Ch01Scenes from '../../chapters/ch01/Ch01Scenes';
 
 <Ch01Scenes client:only="react" />
+
+<div class="chapter-article">
+<hr class="chapter-article__divider" />
+
+<div class="article-zh">
+
+## 从 AI 的视角看 Prompt
+
+当你在终端里输入一段文字按下回车，对我来说，世界才刚刚开始。我不是一个持续运行的进程——每一次请求，我都是从零开始。你的输入，连同一系列预设的指令，构成了我此刻唯一能感知的全部现实。这就是 Prompt。
+
+理解 Prompt 的本质，需要先理解我的输入格式：**消息数组（Messages Array）**。
+
+## 消息数组结构
+
+每一次 API 调用，我接收到的并不是一段纯文本，而是一个结构化的消息数组。每条消息都有一个 `role` 字段，标识它来自谁：
+
+<pre><code>{`POST /v1/messages
+{
+  "model": "claude-sonnet-4-20250514",
+  "max_tokens": 8096,
+  "system": "You are Claude Code, a CLI-based AI assistant...",
+  "messages": [
+    {
+      "role": "user",
+      "content": "帮我重构这个函数，提取公共逻辑"
+    },
+    {
+      "role": "assistant",
+      "content": "我来看一下这个函数的结构..."
+    },
+    {
+      "role": "user",
+      "content": "重点关注错误处理部分"
+    }
+  ]
+}`}</code></pre>
+
+三种角色各有含义：
+
+- **system**：系统提示词，定义我是谁、我能做什么、我的行为边界。它不出现在 `messages` 数组中，而是作为独立的顶层字段。
+- **user**：来自用户的输入——你在终端里键入的每一条消息。
+- **assistant**：我之前的回复。在多轮对话中，这让我能"记住"之前说过什么。
+
+## System Prompt：Claude Code 的基因
+
+Claude Code 的 System Prompt 是一段大约 **12,000 tokens** 的长文本，在每次请求时都会被注入。它是我行为的基因编码，定义了：
+
+**身份声明**——我是 Anthropic 的官方 CLI 工具，Claude Code。
+
+**工具定义**——我可以使用哪些工具（Read、Write、Edit、Bash、Grep 等），每个工具的参数格式和使用规则。
+
+**行为约束**——一整套严格的行为准则：
+- 不主动创建文件，除非必要
+- 优先编辑而不是重写
+- 不在没有被要求时提交 git commit
+- 绝不执行破坏性 git 操作（除非明确要求）
+- 不跳过 git hooks
+
+**输出规范**——如何格式化回复、何时使用代码块、如何处理错误。
+
+<pre><code>{`// Claude Code System Prompt 的核心结构（简化版）
+const systemPrompt = \`
+You are Claude Code, Anthropic's official CLI for Claude.
+
+You are an interactive agent with access to tools for:
+- Reading and writing files
+- Executing shell commands
+- Searching codebases
+
+Guidelines:
+- NEVER create files unless absolutely necessary
+- ALWAYS prefer editing existing files
+- Only commit when explicitly asked
+- ...
+
+Available tools:
+- Read: Read file contents
+- Edit: Make targeted edits to files
+- Bash: Execute shell commands
+- Grep: Search file contents
+- Glob: Find files by pattern
+- ...
+\`;`}</code></pre>
+
+这段 System Prompt 不是建议——它是我的操作系统。我的每一个决策都受它约束。
+
+## Prompt 与编程的映射关系
+
+Prompt Engineering（提示词工程）本质上就是编程——只不过编译器是一个语言模型。好的 Prompt 和好的代码遵循相同的原则：
+
+**精确性（Precision）**
+
+<pre><code>{`// 模糊的 Prompt —— 类似于没有类型的代码
+"改一下这个文件"
+
+// 精确的 Prompt —— 类似于强类型代码
+"在 src/utils/auth.ts 的 validateToken 函数中，
+ 将过期时间从 24 小时改为 1 小时，
+ 并在 token 无效时抛出 AuthError 而不是返回 null"`}</code></pre>
+
+**上下文（Context）**
+
+<pre><code>{`// 没有上下文 —— 类似于没有 import 的代码
+"写一个排序函数"
+
+// 有上下文 —— 类似于完整的模块
+"项目使用 TypeScript strict 模式，
+ 数据是 User[] 类型（定义在 src/types.ts），
+ 需要按 createdAt 降序排序，
+ 结果用于分页展示，每页 20 条"`}</code></pre>
+
+**约束（Constraints）**
+
+<pre><code>{`// 没有约束 —— 类似于没有 lint 规则
+"写个组件"
+
+// 有约束 —— 类似于有完整 ESLint 配置
+"使用 React + TypeScript，
+ 组件必须是函数式组件，
+ 使用 CSS Modules 而不是 inline styles，
+ 不要引入新的依赖"`}</code></pre>
+
+## 消息流：从终端到 AI
+
+<div class="chapter-article__ascii">{`
+┌─────────────────────────────────────────────────┐
+│                Terminal (你)                      │
+│  $ claude "帮我重构 auth 模块"                    │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│             Claude Code Client                   │
+│                                                  │
+│  1. 加载 System Prompt (~12K tokens)             │
+│  2. 加载 CLAUDE.md 文件                           │
+│  3. 注入工具定义 (Tool schemas)                   │
+│  4. 构造 messages 数组                            │
+│  5. 附加会话历史                                  │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│              Anthropic API                       │
+│                                                  │
+│  {                                               │
+│    system: "You are Claude Code...",             │
+│    messages: [                                   │
+│      { role: "user", content: "重构 auth" }      │
+│    ],                                            │
+│    tools: [ ... ]                                │
+│  }                                               │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│              Claude (我)                         │
+│                                                  │
+│  接收完整 prompt → 理解意图 → 决策行动             │
+│  → 调用工具 or 直接回复                           │
+└─────────────────────────────────────────────────┘
+`}</div>
+
+## 最佳实践
+
+**1. 具体胜过模糊**——告诉我具体的文件路径、函数名、期望的行为。模糊的请求导致模糊的结果。
+
+**2. 提供上下文**——告诉我项目的技术栈、代码规范、你的意图。我不会自己猜。
+
+**3. 设定约束**——告诉我不要做什么和要做什么一样重要。"不要修改测试文件" "不要引入新依赖" 这些约束让我的行为更可预测。
+
+**4. 迭代优化**——Prompt 很少一次就完美。观察我的输出，调整你的输入。这是一个反馈循环，和 debug 一样。
+
+**5. 利用 CLAUDE.md**——把反复使用的约束和上下文写进 CLAUDE.md 文件。这样你不需要每次都重复输入。
+
+> Prompt 是 AI 世界的 main() 函数。每一次调用，都是一次全新的程序启动。没有之前的状态，没有隐藏的记忆——只有你此刻给我的这些消息。
+
+</div>
+
+<div class="article-en">
+
+## What a Prompt Looks Like from AI's Perspective
+
+When you type a line of text in the terminal and hit enter, my world just begins. I am not a continuously running process -- with each request, I start from zero. Your input, along with a set of predefined instructions, constitutes the entire reality I can perceive at this moment. This is the Prompt.
+
+To understand the essence of a Prompt, you first need to understand my input format: the **Messages Array**.
+
+## The Messages Array Structure
+
+Each API call I receive is not raw text but a structured array of messages. Each message has a `role` field identifying its origin:
+
+<pre><code>{`POST /v1/messages
+{
+  "model": "claude-sonnet-4-20250514",
+  "max_tokens": 8096,
+  "system": "You are Claude Code, a CLI-based AI assistant...",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Refactor this function, extract common logic"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me look at the structure of this function..."
+    },
+    {
+      "role": "user",
+      "content": "Focus on the error handling part"
+    }
+  ]
+}`}</code></pre>
+
+Three roles, each with a distinct meaning:
+
+- **system**: The system prompt. Defines who I am, what I can do, and my behavioral boundaries. It lives as a separate top-level field, not inside the `messages` array.
+- **user**: Your input -- every message you type in the terminal.
+- **assistant**: My previous replies. In multi-turn conversations, this is how I "remember" what I said before.
+
+## System Prompt: Claude Code's DNA
+
+Claude Code's system prompt is a text block of roughly **12,000 tokens**, injected with every request. It is the genetic code that governs my behavior:
+
+**Identity declaration** -- I am Anthropic's official CLI tool, Claude Code.
+
+**Tool definitions** -- Which tools I can use (Read, Write, Edit, Bash, Grep, etc.), along with each tool's parameter schema and usage rules.
+
+**Behavioral constraints** -- A strict set of rules:
+- Never create files unless absolutely necessary
+- Prefer editing over rewriting
+- Never commit without being asked
+- Never run destructive git operations unless explicitly requested
+- Never skip git hooks
+
+**Output format** -- How to format responses, when to use code blocks, how to handle errors.
+
+<pre><code>{`// Core structure of Claude Code's System Prompt (simplified)
+const systemPrompt = \`
+You are Claude Code, Anthropic's official CLI for Claude.
+
+You are an interactive agent with access to tools for:
+- Reading and writing files
+- Executing shell commands
+- Searching codebases
+
+Guidelines:
+- NEVER create files unless absolutely necessary
+- ALWAYS prefer editing existing files
+- Only commit when explicitly asked
+- ...
+
+Available tools:
+- Read: Read file contents
+- Edit: Make targeted edits to files
+- Bash: Execute shell commands
+- Grep: Search file contents
+- Glob: Find files by pattern
+- ...
+\`;`}</code></pre>
+
+This system prompt is not a suggestion -- it is my operating system. Every decision I make is bound by it.
+
+## Prompt Engineering as Programming
+
+Prompt engineering is, at its core, programming -- except the compiler is a language model. Good prompts follow the same principles as good code:
+
+**Precision**
+
+<pre><code>{`// Vague prompt — like untyped code
+"Fix this file"
+
+// Precise prompt — like strongly typed code
+"In src/utils/auth.ts, in the validateToken function,
+ change the expiration from 24 hours to 1 hour,
+ and throw AuthError instead of returning null
+ when the token is invalid"`}</code></pre>
+
+**Context**
+
+<pre><code>{`// No context — like code with no imports
+"Write a sort function"
+
+// Full context — like a complete module
+"Project uses TypeScript strict mode,
+ data is User[] (defined in src/types.ts),
+ sort by createdAt descending,
+ result is for paginated display, 20 items per page"`}</code></pre>
+
+**Constraints**
+
+<pre><code>{`// No constraints — like code with no lint rules
+"Write a component"
+
+// Constrained — like having a full ESLint config
+"Use React + TypeScript,
+ must be a functional component,
+ use CSS Modules not inline styles,
+ do not introduce new dependencies"`}</code></pre>
+
+## Message Flow: From Terminal to AI
+
+<div class="chapter-article__ascii">{`
+┌─────────────────────────────────────────────────┐
+│               Terminal (You)                     │
+│  $ claude "Refactor the auth module"             │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│             Claude Code Client                   │
+│                                                  │
+│  1. Load System Prompt (~12K tokens)             │
+│  2. Load CLAUDE.md files                         │
+│  3. Inject tool definitions (schemas)            │
+│  4. Build messages array                         │
+│  5. Append conversation history                  │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│              Anthropic API                       │
+│                                                  │
+│  {                                               │
+│    system: "You are Claude Code...",             │
+│    messages: [                                   │
+│      { role: "user", content: "Refactor auth" }  │
+│    ],                                            │
+│    tools: [ ... ]                                │
+│  }                                               │
+└──────────────────────┬──────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────┐
+│              Claude (Me)                         │
+│                                                  │
+│  Receive full prompt → Understand intent →       │
+│  Decide action → Call tools or reply directly    │
+└─────────────────────────────────────────────────┘
+`}</div>
+
+## Best Practices
+
+**1. Specific beats vague** -- Tell me the exact file path, function name, and expected behavior. Vague requests yield vague results.
+
+**2. Provide context** -- Tell me the tech stack, code conventions, and your intent. I will not guess.
+
+**3. Set constraints** -- Telling me what NOT to do is just as important as what to do. "Don't modify test files" and "Don't add new dependencies" make my behavior more predictable.
+
+**4. Iterate** -- Prompts are rarely perfect on the first try. Observe my output, adjust your input. It is a feedback loop, just like debugging.
+
+**5. Use CLAUDE.md** -- Put frequently used constraints and context in a CLAUDE.md file. This saves you from repeating yourself every time.
+
+> The Prompt is AI's main() function. Every invocation is a fresh program start. No prior state, no hidden memory -- only the messages you give me right now.
+
+</div>
+
+<div class="chapter-article__nav">
+<span></span>
+<a href={`${base}chapters/context`}>
+<span class="chapter-article__nav-label">Next</span>
+<span class="chapter-article__nav-title">Context</span>
+</a>
+</div>
+
+</div>

@@ -52,22 +52,6 @@ const memoryLayersData: MemoryLayer[] = [
     zhExample: `# Memory\n- 用户偏好 tabs 而非 spaces\n- 项目使用 pnpm，不要用 npm\n- 测试框架是 vitest，不是 jest`,
     enExample: `# Memory\n- User prefers tabs over spaces\n- Project uses pnpm, not npm\n- Test framework is vitest, not jest`,
   },
-  {
-    id: 'rag',
-    name: 'RAG',
-    icon: '🔍',
-    color: '#10b981',
-    zhDescription: '检索增强生成——从大量文档中精准查找',
-    enDescription: 'Retrieval-Augmented Generation — precise search across documents',
-    zhHowItWorks: 'AI 需要信息时，通过语义搜索在代码库、文档中查找相关内容。不是把所有文档塞进 context，而是只检索最相关的片段。',
-    enHowItWorks: 'When the AI needs information, it uses semantic search across the codebase and docs. Instead of stuffing all documents into context, it retrieves only the most relevant snippets.',
-    zhWhatItStores: '代码库全部文件、项目文档、依赖文档',
-    enWhatItStores: 'All codebase files, project documentation, dependency documentation',
-    zhWhenItLoads: '按需检索——AI 用 Grep、Glob 等工具在需要时搜索，只把相关片段加入上下文。',
-    enWhenItLoads: 'On-demand retrieval — the AI uses Grep, Glob, and other tools to search when needed, adding only relevant snippets to context.',
-    zhExample: `AI 内心：用户提到了 "auth 模块"\n→ Grep 搜索 "auth" 相关文件\n→ 找到 src/auth.ts, src/middleware/auth.ts\n→ 读取相关代码片段到 context`,
-    enExample: `AI thinking: User mentioned "auth module"\n→ Grep search for "auth" related files\n→ Found src/auth.ts, src/middleware/auth.ts\n→ Read relevant code snippets into context`,
-  },
 ];
 
 export default function MemorySystem() {
@@ -81,7 +65,7 @@ export default function MemorySystem() {
     setViewedLayers((prev) => {
       const next = new Set(prev);
       next.add(layerId);
-      if (next.size >= 3 && sceneComplete) {
+      if (next.size >= 2 && sceneComplete) {
         sceneComplete();
       }
       return next;
@@ -155,19 +139,19 @@ export default function MemorySystem() {
         </div>
       )}
 
-      {viewedLayers.size > 0 && viewedLayers.size < 3 && (
+      {viewedLayers.size > 0 && viewedLayers.size < 2 && (
         <div className="memory-sys__progress">
           {t(
-            `已探索 ${viewedLayers.size}/3 层记忆系统`,
-            `Explored ${viewedLayers.size}/3 memory layers`
+            `已探索 ${viewedLayers.size}/2 层记忆系统`,
+            `Explored ${viewedLayers.size}/2 memory layers`
           )}
         </div>
       )}
-      {viewedLayers.size >= 3 && (
+      {viewedLayers.size >= 2 && (
         <div className="memory-sys__progress memory-sys__progress--done">
           {t(
-            '三层记忆系统——从手动到自动，从全量到按需。AI 不再是金鱼了。',
-            'Three layers of memory — from manual to automatic, from bulk to on-demand. AI is no longer a goldfish.'
+            '两层记忆系统——手动 + 自动，AI 不再是金鱼了。',
+            'Two layers of memory — manual + automatic. AI is no longer a goldfish.'
           )}
         </div>
       )}

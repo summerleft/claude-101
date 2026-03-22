@@ -5,6 +5,7 @@ import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import ContextWindow from '../../components/interactive/ch02/ContextWindow';
 import ContextLayers from '../../components/interactive/ch02/ContextLayers';
+import CompactSimulator from '../../components/interactive/ch02/CompactSimulator';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch02Scenes() {
@@ -104,6 +105,47 @@ function Ch02Content() {
           <p>{t('上下文是分层的。点击每一层，看看里面都有什么：', 'Context is layered. Click each layer to see what\'s inside:')}</p>
         </Narration>
         <ContextLayers />
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>
+            {t(
+              <>但上下文窗口有<strong>上限</strong>。</>,
+              <>But the context window has a <strong>limit</strong>.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>对话越长，工具输出越多，窗口就越满。<br />满了怎么办？</>,
+              <>The longer the conversation, the more tool outputs, the fuller the window.<br />What happens when it's full?</>
+            )}
+          </p>
+          <p>
+            {t(
+              <><strong>Compact</strong>——压缩上下文。</>,
+              <><strong>Compact</strong> — compress the context.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>当上下文接近上限时，Claude Code 会自动触发 <strong>auto-compact</strong>。<br />你也可以用 <code>/compact</code> 命令手动触发。</>,
+              <>When context approaches the limit, Claude Code auto-triggers <strong>auto-compact</strong>.<br />You can also manually trigger it with the <code>/compact</code> command.</>
+            )}
+          </p>
+        </Narration>
+      </Scene>
+
+      <Scene interactive>
+        <Narration>
+          <p>
+            {t(
+              '压缩不是全删——它有策略。看看哪些被保留，哪些被丢弃，哪些被压缩成摘要：',
+              'Compaction isn\'t deletion — it\'s strategic. See what gets kept, trimmed, or summarized:'
+            )}
+          </p>
+        </Narration>
+        <CompactSimulator />
       </Scene>
 
       <Scene>

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSceneComplete } from '../../../engine/SceneContext';
 import { useLanguage } from '../../../i18n/LanguageContext';
 
 interface Message {
@@ -20,6 +21,7 @@ const roleIcons: Record<string, string> = {
 };
 
 export default function MessageStructure() {
+  const sceneComplete = useSceneComplete();
   const { t } = useLanguage();
   const [visibleCount, setVisibleCount] = useState(0);
 
@@ -40,6 +42,12 @@ export default function MessageStructure() {
       label: t('AI 回复', 'AI Response'),
     },
   ];
+
+  useEffect(() => {
+    if (visibleCount >= messages.length && sceneComplete) {
+      sceneComplete();
+    }
+  }, [visibleCount, messages.length, sceneComplete]);
 
   const handleAdd = () => {
     if (visibleCount < messages.length) {

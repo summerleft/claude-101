@@ -3,7 +3,7 @@ import Scene from '../../components/scene/Scene';
 import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
-import SkillBuilder from '../../components/interactive/ch08/SkillBuilder';
+import HookLifecycle from '../../components/interactive/ch08/HookLifecycle';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch08Scenes() {
@@ -17,21 +17,40 @@ function Ch08Content() {
     <SceneEngine>
       <Scene>
         <Narration>
-          <p>{t('你发现自己反复做同样的事——', 'You find yourself doing the same things over and over—')}</p>
+          <p>{t('你已经很能干了。', 'You\'ve become quite capable.')}</p>
           <p>
             {t(
-              '部署。代码审查。生成 PR 描述。',
-              'Deploying. Code review. Generating PR descriptions.'
+              '但有些事情，每次都要人来告诉你做——',
+              'But some things still require someone to tell you every time—'
             )}
           </p>
-          <p>{t('每次都从零开始描述需求。', 'Describing the requirements from scratch every time.')}</p>
+          <p>
+            {t('"记得跑 lint"。', '"Remember to run lint".')}
+            <br />
+            {t('"别忘了格式化"。', '"Don\'t forget to format".')}
+            <br />
+            {t('"提交前先跑测试"。', '"Run tests before committing".')}
+          </p>
+          <p>{t(
+            <>能不能<strong>自动化</strong>？</>,
+            <>Can we <strong>automate</strong> this?</>
+          )}</p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>{t('想想这些重复的动作——', 'Think about these repetitive actions—')}</p>
+          <p>{t('每次编辑文件后跑 linter。', 'Running linter after every file edit.')}</p>
+          <p>{t('每次提交前跑测试。', 'Running tests before every commit.')}</p>
+          <p>{t('每次会话开始时加载环境变量。', 'Loading environment variables at every session start.')}</p>
           <p>
             {t(
-              '"帮我部署一下，先跑测试，然后 build，然后执行 deploy 脚本……"',
-              '"Help me deploy—run tests first, then build, then execute the deploy script..."'
+              <strong>一次又一次，完全相同的操作。</strong>,
+              <strong>Over and over, the exact same operations.</strong>
             )}
           </p>
-          <p>{t('一遍又一遍。', 'Over and over again.')}</p>
+          <p>{t('能不能一劳永逸？', 'Can we set it up once and for all?')}</p>
         </Narration>
       </Scene>
 
@@ -39,44 +58,20 @@ function Ch08Content() {
         <Narration>
           <p>
             {t(
-              <>程序员说 <strong>"Don't Repeat Yourself"</strong>。</>,
-              <>Programmers say <strong>"Don't Repeat Yourself"</strong>.</>
-            )}
-          </p>
-          <p>{t('重复的代码要封装成函数。', 'Repetitive code should be encapsulated into functions.')}</p>
-          <p>
-            {t(
-              <>那 AI 的工作流程呢？<br />重复的指令，能不能也"封装"起来？</>,
-              <>What about AI workflows?<br />Can repetitive instructions also be "encapsulated"?</>
-            )}
-          </p>
-        </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <><strong>Skills</strong> 就是可复用的"超能力"。</>,
-              <><strong>Skills</strong> are reusable "superpowers".</>
+              <><strong>Hooks</strong> 就是"触发器"。</>,
+              <><strong>Hooks</strong> are "triggers".</>
             )}
           </p>
           <p>
             {t(
-              <>一个 <code>SKILL.md</code> 文件，包含 AI 的指令。</>,
-              <>A <code>SKILL.md</code> file containing instructions for the AI.</>
+              '在特定事件发生时，自动执行你定义的脚本。',
+              'When specific events occur, they automatically execute scripts you define.'
             )}
           </p>
           <p>
             {t(
-              <>可以手动触发——输入 <code>/skill-name</code>。<br />也可以让 AI 自动识别和使用。</>,
-              <>Can be triggered manually—type <code>/skill-name</code>.<br />Or let the AI automatically recognize and use them.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>就像把常用命令写成脚本。<br />只是这次，脚本的执行者是 AI。</>,
-              <>Like writing frequently used commands into scripts.<br />Except this time, the executor is the AI.</>
+              <>就像 Git Hooks——commit 前自动跑 lint。<br />但 Claude Code 的 Hooks 更强大：它可以在 AI 的<strong>整个生命周期</strong>中挂载。</>,
+              <>Like Git Hooks—automatically running lint before a commit.<br />But Claude Code's Hooks are more powerful: they can be attached throughout the AI's <strong>entire lifecycle</strong>.</>
             )}
           </p>
         </Narration>
@@ -84,75 +79,51 @@ function Ch08Content() {
 
       <Scene interactive>
         <Narration>
-          <p>{t('让我们一起构建一个 Skill。', 'Let\'s build a Skill together.')}</p>
           <p>{t(
-            '选择一个场景，看看 SKILL.md 是如何一步步组装起来的：',
-            'Choose a scenario and see how a SKILL.md is assembled step by step:'
+            'AI 的一次工作流程，有哪些关键时刻可以挂载 Hook？',
+            'In an AI workflow, what are the key moments where you can attach a Hook?'
+          )}</p>
+          <p>{t(
+            '点击时间线上的事件，探索每个挂载点：',
+            'Click events on the timeline to explore each hook point:'
           )}</p>
         </Narration>
-        <SkillBuilder />
+        <HookLifecycle />
       </Scene>
 
       <Scene>
         <Narration>
+          <p>{t('Hook 有四种类型——', 'There are four types of Hooks—')}</p>
           <p>
             {t(
-              '两种触发方式——',
-              'Two ways to trigger—'
+              <><strong>Command</strong>：执行 shell 脚本。最常用。</>,
+              <><strong>Command</strong>: Execute shell scripts. The most common.</>
             )}
           </p>
           <p>
             {t(
-              <><strong>手动触发</strong>：输入 <code>/deploy</code>，Claude Code 找到对应的 SKILL.md 并执行。</>,
-              <><strong>Manual trigger</strong>: Type <code>/deploy</code>, and Claude Code finds the corresponding SKILL.md and executes it.</>
+              <><strong>HTTP</strong>：发送 HTTP 请求。适合通知和 webhook。</>,
+              <><strong>HTTP</strong>: Send HTTP requests. Great for notifications and webhooks.</>
             )}
           </p>
           <p>
             {t(
-              <><strong>自动触发</strong>：AI 读取 skill 的 description，判断当前任务是否匹配。匹配就自动加载。</>,
-              <><strong>Auto trigger</strong>: The AI reads the skill's description and determines if it matches the current task. If so, it loads automatically.</>
+              <><strong>Prompt</strong>：问 AI 一个问题，用回答决定下一步。</>,
+              <><strong>Prompt</strong>: Ask the AI a question and use the answer to decide next steps.</>
             )}
           </p>
           <p>
             {t(
-              '就像函数可以被显式调用，也可以被框架自动调用。',
-              'Just like functions can be called explicitly, or called automatically by a framework.'
+              <><strong>Agent</strong>：派一个子代理去执行任务。</>,
+              <><strong>Agent</strong>: Dispatch a sub-agent to perform a task.</>
             )}
           </p>
         </Narration>
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>{t('Skills 住在哪里？', 'Where do Skills live?')}</p>
+        <DeepDive title={t('Hook 类型详解', 'Hook Types Explained')}>
           <p>
             {t(
-              <><strong>个人级</strong>：<code>~/.claude/skills/</code> —— 你自己的私人技能库。</>,
-              <><strong>Personal</strong>: <code>~/.claude/skills/</code> — Your own private skill library.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>项目级</strong>：<code>.claude/skills/</code> —— 团队共享的项目技能。</>,
-              <><strong>Project</strong>: <code>.claude/skills/</code> — Shared project skills for the team.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <><strong>插件级</strong>：通过插件分发 —— 社区贡献的技能。</>,
-              <><strong>Plugin</strong>: Distributed via plugins — Community-contributed skills.</>
-            )}
-          </p>
-          <p>{t(
-            '就像工具箱的不同抽屉——私人的、团队的、社区的。',
-            'Like different drawers in a toolbox—personal, team, and community.'
-          )}</p>
-        </Narration>
-        <DeepDive title={t('Skill 的发现机制', 'Skill Discovery Mechanism')}>
-          <p>
-            {t(
-              'Claude Code 启动时会扫描所有 skill 目录，收集可用的 skills。每个 skill 的 frontmatter 中有 name 和 description。当用户输入 /name 时精确匹配；当 AI 自主决策时，根据 description 语义匹配当前任务。',
-              'When Claude Code starts, it scans all skill directories and collects available skills. Each skill\'s frontmatter contains a name and description. When a user types /name, it matches exactly; when the AI decides autonomously, it semantically matches the description to the current task.'
+              'Command 类型最直接——执行一段 shell 命令，用退出码和 stdout 控制行为。PreToolUse 的 Hook 可以返回 JSON，包含 decision（approve/deny）和 reason，来拦截或批准工具调用。',
+              'The Command type is the most straightforward—it executes a shell command and uses exit codes and stdout to control behavior. A PreToolUse Hook can return JSON containing a decision (approve/deny) and reason to intercept or approve tool calls.'
             )}
           </p>
         </DeepDive>
@@ -160,40 +131,70 @@ function Ch08Content() {
 
       <Scene>
         <Narration>
+          <p>{t(
+            <>Hook 的真正威力在于<strong>拦截</strong>。</>,
+            <>The real power of Hooks lies in <strong>interception</strong>.</>
+          )}</p>
           <p>
             {t(
-              <>Skills 把<strong>"一次性的指令"</strong>变成了<strong>"可复用的能力"</strong>。</>,
-              <>Skills turn <strong>"one-off instructions"</strong> into <strong>"reusable capabilities"</strong>.</>
+              <>PreToolUse 返回 <code>deny</code>？工具调用被阻止。</>,
+              <>PreToolUse returns <code>deny</code>? The tool call is blocked.</>
             )}
           </p>
           <p>
             {t(
-              <>好的 skill 就像好的函数——<br />做一件事，做得很好。</>,
-              <>A good skill is like a good function—<br />it does one thing, and does it well.</>
+              <>返回 <code>approve</code>？跳过用户确认，自动执行。</>,
+              <>Returns <code>approve</code>? Skip user confirmation, execute automatically.</>
             )}
           </p>
           <p>
             {t(
-              <>名字清晰，描述准确，指令具体。<br />任何人拿到都能用。</>,
-              <>Clear name, accurate description, specific instructions.<br />Anyone can pick it up and use it.</>
+              'PostToolUse？工具执行完自动做后处理。',
+              'PostToolUse? Automatically run post-processing after tool execution.'
             )}
           </p>
+          <p>{t(
+            '你可以精确控制 AI 的每一个动作。',
+            'You can precisely control every action the AI takes.'
+          )}</p>
         </Narration>
       </Scene>
 
       <Scene>
         <Narration>
-          <p>{t('单个 skill 很好用。', 'A single skill works great.')}</p>
           <p>
             {t(
-              '但如果想把 skills、hooks、agents 打包成一个可分享的整体呢？',
-              'But what if you want to package skills, hooks, and agents into a shareable bundle?'
+              <>Hooks 把<strong>"每次都要手动做"</strong>变成了<strong>"一次配置，永远自动"</strong>。</>,
+              <>Hooks turn <strong>"do it manually every time"</strong> into <strong>"configure once, automate forever"</strong>.</>
+            )}
+          </p>
+          <p>{t(
+            '它是 Claude Code 自动化的基石。',
+            'It\'s the cornerstone of Claude Code automation.'
+          )}</p>
+          <p>
+            {t(
+              <>编辑后自动格式化。<br />提交前自动测试。<br />危险操作自动拦截。</>,
+              <>Auto-format after editing.<br />Auto-test before committing.<br />Auto-intercept dangerous operations.</>
+            )}
+          </p>
+          <p>{t('一切都在后台默默发生。', 'Everything happens silently in the background.')}</p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>{t('自动化很好。', 'Automation is great.')}</p>
+          <p>
+            {t(
+              <>但如果你有一套复杂的工作流程，想<strong>打包复用</strong>呢？</>,
+              <>But what if you have a complex workflow you want to <strong>package for reuse</strong>?</>
             )}
           </p>
           <p>
             {t(
-              <>下一章——<strong>Plugins</strong>。</>,
-              <>Next chapter—<strong>Plugins</strong>.</>
+              <>下一章——<strong>Skills</strong>。</>,
+              <>Next chapter—<strong>Skills</strong>.</>
             )}
           </p>
         </Narration>

@@ -3,8 +3,7 @@ import Scene from '../../components/scene/Scene';
 import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
-import ConfigMap from '../../components/interactive/ch12/ConfigMap';
-import ConfigBuilder from '../../components/interactive/ch12/ConfigBuilder';
+import PermissionSimulator from '../../components/interactive/ch12/PermissionSimulator';
 import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch12Scenes() {
@@ -18,11 +17,16 @@ function Ch12Content() {
     <SceneEngine>
       <Scene>
         <Narration>
-          <p>{t('你已经了解了 Claude Code 的所有能力。', "You've learned all of Claude Code's capabilities.")}</p>
           <p>
             {t(
-              <>现在，是时候把它变成<strong>「你的」</strong>Claude Code 了。</>,
-              <>Now, it's time to make it <strong>"your"</strong> Claude Code.</>
+              <>你现在可以读文件、写代码、执行命令、<br />连接外部服务、甚至派出子代理。</>,
+              <>You can now read files, write code, execute commands,<br />connect to external services, and even dispatch subagents.</>
+            )}
+          </p>
+          <p>
+            {t(
+              <>这些能力很强大——也很<strong>危险</strong>。</>,
+              <>These capabilities are powerful—and <strong>dangerous</strong>.</>
             )}
           </p>
         </Narration>
@@ -32,20 +36,39 @@ function Ch12Content() {
         <Narration>
           <p>
             {t(
-              'Settings、CLAUDE.md、Skills、Hooks、Permissions、MCP——',
-              'Settings, CLAUDE.md, Skills, Hooks, Permissions, MCP—'
+              <>如果 AI 执行了 <code>rm -rf /</code>？</>,
+              <>What if AI executes <code>rm -rf /</code>?</>
+            )}
+          </p>
+          <p>{t('如果它把秘密写进了公开仓库？', 'What if it writes secrets into a public repository?')}</p>
+          <p>{t('如果它未经授权访问了生产数据库？', 'What if it accesses the production database without authorization?')}</p>
+          <p>
+            {t(
+              <><strong>能力没有边界，就是灾难。</strong></>,
+              <><strong>Power without boundaries is a disaster.</strong></>
+            )}
+          </p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>
+            {t(
+              <>所以 Claude Code 有一套分层的<strong>权限系统</strong>。</>,
+              <>That's why Claude Code has a layered <strong>permission system</strong>.</>
             )}
           </p>
           <p>
             {t(
-              <>所有的配置，形成一个<strong>完整的体系</strong>。</>,
-              <>All configurations form a <strong>complete system</strong>.</>
+              <>只读操作——<strong>自动放行</strong>，不需要确认。<br />写操作——<strong>需要确认</strong>，你来决定。<br />Bash 命令——<strong>需要确认</strong>，逐条审核。</>,
+              <>Read-only operations—<strong>auto-approved</strong>, no confirmation needed.<br />Write operations—<strong>require approval</strong>, you decide.<br />Bash commands—<strong>require approval</strong>, reviewed one by one.</>
             )}
           </p>
           <p>
             {t(
-              <>每一个配置文件都有自己的职责，<br />它们共同定义了 Claude Code 如何为你工作。</>,
-              <>Each configuration file has its own responsibility,<br />together they define how Claude Code works for you.</>
+              <>每一层，都是一道安全的<strong>闸门</strong>。</>,
+              <>Each layer is a safety <strong>gate</strong>.</>
             )}
           </p>
         </Narration>
@@ -53,36 +76,35 @@ function Ch12Content() {
 
       <Scene interactive>
         <Narration>
-          <p>{t('这是 Claude Code 的配置全景图。', "This is Claude Code's configuration panorama.")}</p>
-          <p>{t('点击每个配置文件，了解它的作用和层级：', 'Click each config file to learn about its role and hierarchy:')}</p>
+          <p>
+            {t(
+              <>现在你来当<strong>守门人</strong>。</>,
+              <>Now it's your turn to be the <strong>gatekeeper</strong>.</>
+            )}
+          </p>
+          <p>{t('审核以下操作，决定是否放行：', 'Review the following operations and decide whether to approve:')}</p>
         </Narration>
-        <ConfigMap />
+        <PermissionSimulator />
       </Scene>
 
       <Scene>
         <Narration>
           <p>
             {t(
-              <>配置像<strong>"洋葱"</strong>——一层一层包裹。</>,
-              <>Configuration is like an <strong>"onion"</strong>—layer upon layer.</>
+              <>权限模式有<strong>五种</strong>：</>,
+              <>There are <strong>five</strong> permission modes:</>
             )}
           </p>
           <p>
             {t(
-              '组织策略 > 命令行参数 > 本地 > 项目 > 用户。',
-              'Organization policy > CLI arguments > Local > Project > User.'
+              <><strong>default</strong> —— 标准模式，该问就问。<br /><strong>acceptEdits</strong> —— 自动通过文件编辑。<br /><strong>plan</strong> —— 只读模式，只看不动。<br /><strong>dontAsk</strong> —— 只用预批准的工具。<br /><strong>bypassPermissions</strong> —— 跳过所有检查，危险！</>,
+              <><strong>default</strong> — Standard mode, asks when needed.<br /><strong>acceptEdits</strong> — Auto-approves file edits.<br /><strong>plan</strong> — Read-only mode, observe without action.<br /><strong>dontAsk</strong> — Only uses pre-approved tools.<br /><strong>bypassPermissions</strong> — Skips all checks, dangerous!</>
             )}
           </p>
           <p>
             {t(
-              <><strong>内层可以覆盖外层</strong>。</>,
-              <><strong>Inner layers can override outer layers</strong>.</>
-            )}
-          </p>
-          <p>
-            {t(
-              <>你的个人偏好可以覆盖项目默认值，<br />但组织策略不可被覆盖——这是安全底线。</>,
-              <>Your personal preferences can override project defaults,<br />but organization policies cannot be overridden—that's the security baseline.</>
+              <>选择哪种模式，取决于你对 AI 的<strong>信任程度</strong>。</>,
+              <>Which mode you choose depends on your <strong>level of trust</strong> in AI.</>
             )}
           </p>
         </Narration>
@@ -90,47 +112,26 @@ function Ch12Content() {
 
       <Scene>
         <Narration>
+          <p>{t(
+            <>更精细的控制？用 <strong>Allow & Deny 规则</strong>。</>,
+            <>Need finer control? Use <strong>Allow & Deny rules</strong>.</>
+          )}</p>
           <p>
             {t(
-              '好的配置策略：',
-              'Good configuration strategy:'
+              <><code>Bash(npm run *)</code> —— 允许所有 npm 命令。<br /><code>Bash(rm -rf *)</code> —— 拒绝危险删除。</>,
+              <><code>Bash(npm run *)</code> — Allow all npm commands.<br /><code>Bash(rm -rf *)</code> — Deny dangerous deletions.</>
             )}
           </p>
           <p>
             {t(
-              <>项目级 <strong>CLAUDE.md</strong> 写团队共识——编码规范、架构决策。<br />个人 <strong>skills</strong> 写个人偏好——你习惯的工作流程。<br /><strong>hooks</strong> 自动化重复工作——lint、test、format。<br /><strong>permissions</strong> 保护安全——明确允许和禁止。</>,
-              <>Project-level <strong>CLAUDE.md</strong> for team consensus—coding standards, architecture decisions.<br />Personal <strong>skills</strong> for individual preferences—your preferred workflows.<br /><strong>hooks</strong> to automate repetitive work—lint, test, format.<br /><strong>permissions</strong> to protect safety—explicitly allow and deny.</>
-            )}
-          </p>
-        </Narration>
-      </Scene>
-
-      <Scene interactive>
-        <Narration>
-          <p>{t('让我们来构建你的配置。', "Let's build your configuration.")}</p>
-          <p>{t('回答几个问题，看看生成的配置文件：', 'Answer a few questions and see the generated config files:')}</p>
-        </Narration>
-        <ConfigBuilder />
-      </Scene>
-
-      <Scene>
-        <Narration>
-          <p>
-            {t(
-              <><strong>恭喜你！</strong></>,
-              <><strong>Congratulations!</strong></>
+              <>规则很简单：<strong>Deny 优先于 Allow</strong>。</>,
+              <>The rule is simple: <strong>Deny takes priority over Allow</strong>.</>
             )}
           </p>
           <p>
             {t(
-              '你现在从 AI 的视角，完整理解了 Claude Code 的工作原理。',
-              "You now fully understand how Claude Code works, from AI's perspective."
-            )}
-          </p>
-          <p>
-            {t(
-              <>从一条 prompt 开始，到工具、循环、记忆、扩展、安全——<br />每一层都是为了让 AI <strong>更好地帮助你</strong>。</>,
-              <>From a single prompt, to tools, loops, memory, extensions, safety—<br />every layer exists to help AI <strong>serve you better</strong>.</>
+              <>只要有一条 Deny 匹配，无论多少 Allow 都不管用。<br />这就是"安全优先"的原则。</>,
+              <>As long as one Deny rule matches, no amount of Allow rules will override it.<br />This is the "safety first" principle.</>
             )}
           </p>
         </Narration>
@@ -140,20 +141,32 @@ function Ch12Content() {
         <Narration>
           <p>
             {t(
-              <><strong>Claude Code 不只是一个工具——它是你和 AI 协作的界面。</strong></>,
-              <><strong>Claude Code isn't just a tool—it's the interface for your collaboration with AI.</strong></>
+              <><strong>权限不是限制——是信任的边界。</strong></>,
+              <><strong>Permissions aren't restrictions—they're trust boundaries.</strong></>
             )}
           </p>
           <p>
             {t(
-              '理解它的工作原理，就是掌握与 AI 协作的艺术。',
-              'Understanding how it works is mastering the art of collaborating with AI.'
+              '好的权限设置让 AI 高效工作，同时确保安全。',
+              'Good permission settings let AI work efficiently while staying safe.'
             )}
           </p>
           <p>
             {t(
-              '去创造吧。',
-              'Go create.'
+              <>就像给赛车手一条赛道——<br />不是不让他开快车，而是确保他不会冲出跑道。</>,
+              <>Like giving a race car driver a track—<br />not to stop them from going fast, but to make sure they don't fly off the road.</>
+            )}
+          </p>
+        </Narration>
+      </Scene>
+
+      <Scene>
+        <Narration>
+          <p>{t('最后一章。', 'The final chapter.')}</p>
+          <p>
+            {t(
+              <>我们来把所有这些定制和配置整合在一起——<strong>Configuration</strong>。</>,
+              <>Let's bring all the customization and configuration together—<strong>Configuration</strong>.</>
             )}
           </p>
         </Narration>
