@@ -184,6 +184,14 @@
   cursor: pointer;
   user-select: none;
   z-index: 1;
+
+  /* Override theme vars for dark scene backgrounds */
+  --color-text: #e5e5e5;
+  --color-text-secondary: #aaaaaa;
+  --color-text-muted: #888888;
+  --color-border: #333333;
+  --color-border-dark: #555555;
+  --color-bg-secondary: #1a1a2e;
 }
 
 .scene-viewport {
