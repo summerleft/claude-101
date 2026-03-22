@@ -184,8 +184,10 @@
   cursor: pointer;
   user-select: none;
   z-index: 1;
+}
 
-  /* Override theme vars for dark scene backgrounds */
+/* Override theme vars for interactive components on dark scene backgrounds */
+[data-interactive] {
   --color-text: #e5e5e5;
   --color-text-secondary: #aaaaaa;
   --color-text-muted: #888888;
