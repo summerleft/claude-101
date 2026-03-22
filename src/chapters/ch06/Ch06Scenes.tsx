@@ -4,9 +4,13 @@ import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import MemorySystem from '../../components/interactive/ch06/MemorySystem';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch06Scenes() {
+  return <LanguageProvider><Ch06Content /></LanguageProvider>;
+}
+
+function Ch06Content() {
   const { t } = useLanguage();
   return (
     <SceneEngine>

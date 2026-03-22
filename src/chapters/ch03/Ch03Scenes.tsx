@@ -5,9 +5,13 @@ import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import ToolExplorer from '../../components/interactive/ch03/ToolExplorer';
 import ToolCallSimulator from '../../components/interactive/ch03/ToolCallSimulator';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch03Scenes() {
+  return <LanguageProvider><Ch03Content /></LanguageProvider>;
+}
+
+function Ch03Content() {
   const { t } = useLanguage();
 
   return (

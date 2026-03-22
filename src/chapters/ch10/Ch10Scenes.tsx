@@ -4,9 +4,13 @@ import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import SubagentDispatch from '../../components/interactive/ch10/SubagentDispatch';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch10Scenes() {
+  return <LanguageProvider><Ch10Content /></LanguageProvider>;
+}
+
+function Ch10Content() {
   const { t } = useLanguage();
 
   return (

@@ -7,9 +7,13 @@ import PromptComparator from '../../components/interactive/ch01/PromptComparator
 import PromptClaritySlider from '../../components/interactive/ch01/PromptClaritySlider';
 import MessageStructure from '../../components/interactive/ch01/MessageStructure';
 import SystemPromptDemo from '../../components/interactive/ch01/SystemPromptDemo';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch01Scenes() {
+  return <LanguageProvider><Ch01Content /></LanguageProvider>;
+}
+
+function Ch01Content() {
   const { t } = useLanguage();
 
   return (

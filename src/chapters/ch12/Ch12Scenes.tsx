@@ -5,9 +5,13 @@ import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import ConfigMap from '../../components/interactive/ch12/ConfigMap';
 import ConfigBuilder from '../../components/interactive/ch12/ConfigBuilder';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch12Scenes() {
+  return <LanguageProvider><Ch12Content /></LanguageProvider>;
+}
+
+function Ch12Content() {
   const { t } = useLanguage();
 
   return (

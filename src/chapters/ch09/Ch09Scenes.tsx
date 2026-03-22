@@ -4,9 +4,13 @@ import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import PluginAnatomy from '../../components/interactive/ch09/PluginAnatomy';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch09Scenes() {
+  return <LanguageProvider><Ch09Content /></LanguageProvider>;
+}
+
+function Ch09Content() {
   const { t } = useLanguage();
 
   return (

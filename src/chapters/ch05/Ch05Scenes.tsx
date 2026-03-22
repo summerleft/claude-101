@@ -5,9 +5,13 @@ import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import MCPArchitecture from '../../components/interactive/ch05/MCPArchitecture';
 import MCPConnector from '../../components/interactive/ch05/MCPConnector';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch05Scenes() {
+  return <LanguageProvider><Ch05Content /></LanguageProvider>;
+}
+
+function Ch05Content() {
   const { t } = useLanguage();
   return (
     <SceneEngine>

@@ -2,7 +2,7 @@ import { Children, useState, useCallback, cloneElement, type ReactNode, type Rea
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSceneNavigation } from './useSceneNavigation';
 import { getTransitionVariants, transitionConfig } from './transitions';
-import { LanguageProvider, useLanguage } from '../i18n/LanguageContext';
+import { useLanguage } from '../i18n/LanguageContext';
 import ProgressDots from '../components/scene/ProgressDots';
 
 interface SceneEngineProps {
@@ -155,9 +155,5 @@ function SceneEngineInner({ children }: SceneEngineProps) {
 }
 
 export default function SceneEngine({ children }: SceneEngineProps) {
-  return (
-    <LanguageProvider>
-      <SceneEngineInner>{children}</SceneEngineInner>
-    </LanguageProvider>
-  );
+  return <SceneEngineInner>{children}</SceneEngineInner>;
 }

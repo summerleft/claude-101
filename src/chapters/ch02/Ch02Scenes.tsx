@@ -5,9 +5,13 @@ import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import ContextWindow from '../../components/interactive/ch02/ContextWindow';
 import ContextLayers from '../../components/interactive/ch02/ContextLayers';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch02Scenes() {
+  return <LanguageProvider><Ch02Content /></LanguageProvider>;
+}
+
+function Ch02Content() {
   const { t } = useLanguage();
 
   return (

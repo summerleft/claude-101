@@ -4,9 +4,13 @@ import Narration from '../../components/scene/Narration';
 import ChatBubble from '../../components/scene/ChatBubble';
 import DeepDive from '../../components/scene/DeepDive';
 import PermissionSimulator from '../../components/interactive/ch11/PermissionSimulator';
-import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from '../../i18n/LanguageContext';
 
 export default function Ch11Scenes() {
+  return <LanguageProvider><Ch11Content /></LanguageProvider>;
+}
+
+function Ch11Content() {
   const { t } = useLanguage();
 
   return (
