@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://airingursb.github.io',
+  site: 'https://summerleft.github.io',
   base: '/claude-101',
   integrations: [react(), mdx()],
 
